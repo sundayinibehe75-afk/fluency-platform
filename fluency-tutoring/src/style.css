@@ -158,29 +158,22 @@ section { padding: 5rem 2rem; }
 
 .about-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  align-items: center;
+  grid-template-columns: auto 1fr;
+  gap: 3rem;
+  align-items: start;
 }
 
 .about-image {
-  background: linear-gradient(135deg, var(--black), #444);
-  border-radius: 8px;
-  height: 380px;
+  border-radius: 50%;
+  width: 200px;
+  height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 5rem;
   position: relative;
   overflow: hidden;
-}
-
-.about-image::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 4px;
-  background: linear-gradient(to right, var(--black) 33%, var(--red) 33%, var(--red) 66%, var(--gold) 66%);
+  border: 4px solid var(--gold);
+  flex-shrink: 0;
 }
 
 .about-text p { color: var(--gray); line-height: 1.8; margin-bottom: 1rem; }
