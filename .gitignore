@@ -1,0 +1,21 @@
+# Environment variables (secrets - never commit)
+.env
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.hypothesis/
+.pytest_cache/
+
+# Docker
+proxy/certs/
+
+# OS files
+.DS_Store
+Thumbs.db
