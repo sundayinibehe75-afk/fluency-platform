@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, Navigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import Nav from '../../components/Nav'
@@ -15,8 +15,13 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
 
   const api = useApi()
-  const { login } = useAuth()
+  const { user, login } = useAuth()
   const navigate = useNavigate()
+
+  // If already logged in, redirect away
+  if (user) {
+    return <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} replace />
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
