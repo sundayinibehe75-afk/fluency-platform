@@ -137,7 +137,7 @@ function StudentsTab() {
 function AvailabilityTab() {
   const api = useApi()
   const [startDate, setStartDate] = useState('')
-  const [startTime, setStartTime] = useState('09:00')
+  const [times, setTimes] = useState(['09:00'])
   const [duration, setDuration] = useState(60)
   const [recurrence, setRecurrence] = useState(false)
   const [weeksAhead, setWeeksAhead] = useState(4)
@@ -164,36 +164,59 @@ function AvailabilityTab() {
     }
   }
 
+  function addTime() {
+    setTimes(prev => [...prev, '10:00'])
+  }
+
+  function removeTime(index) {
+    setTimes(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function updateTime(index, value) {
+    setTimes(prev => prev.map((t, i) => i === index ? value : t))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setMessage('')
     setLoading(true)
 
-    const startAt = new Date(`${startDate}T${startTime}:00Z`).toISOString()
-    const endAt = new Date(new Date(`${startDate}T${startTime}:00Z`).getTime() + duration * 60000).toISOString()
+    let totalCreated = 0
+    let errors = []
 
-    const body = {
-      tutor_id: tutorId,
-      start_at: startAt,
-      end_at: endAt,
-      duration_minutes: duration,
+    for (const time of times) {
+      const startAt = new Date(`${startDate}T${time}:00Z`).toISOString()
+      const endAt = new Date(new Date(`${startDate}T${time}:00Z`).getTime() + duration * 60000).toISOString()
+
+      const body = {
+        tutor_id: tutorId,
+        start_at: startAt,
+        end_at: endAt,
+        duration_minutes: duration,
+      }
+
+      if (recurrence) {
+        body.recurrence = { pattern: 'weekly', weeks_ahead: weeksAhead }
+      }
+
+      try {
+        const res = await api.post('/availability', body)
+        totalCreated += res.data.length
+      } catch (err) {
+        const detail = err.response?.data?.detail?.detail || err.response?.data?.detail || 'Failed'
+        errors.push(`${time}: ${detail}`)
+      }
     }
 
-    if (recurrence) {
-      body.recurrence = { pattern: 'weekly', weeks_ahead: weeksAhead }
-    }
-
-    try {
-      const res = await api.post('/availability', body)
-      setMessage(`✅ Created ${res.data.length} slot(s) successfully!`)
-      setStartDate('')
+    if (totalCreated > 0) {
+      setMessage(`✅ Created ${totalCreated} slot(s) successfully!${errors.length ? ' Some failed.' : ''}`)
       fetchSlots()
-    } catch (err) {
-      const detail = err.response?.data?.detail?.detail || err.response?.data?.detail || 'Failed to create slots'
-      setMessage(`❌ ${detail}`)
-    } finally {
-      setLoading(false)
     }
+    if (errors.length > 0 && totalCreated === 0) {
+      setMessage(`❌ ${errors.join(', ')}`)
+    }
+
+    setLoading(false)
   }
 
   async function handleDelete(slotId) {
@@ -221,14 +244,24 @@ function AvailabilityTab() {
           />
         </div>
         <div className="admin-form-group">
-          <label htmlFor="start-time">Start Time (UTC)</label>
-          <input
-            id="start-time"
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            required
-          />
+          <label>Time Slots (UTC)</label>
+          {times.map((time, index) => (
+            <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => updateTime(index, e.target.value)}
+                required
+                style={{ flex: 1 }}
+              />
+              {times.length > 1 && (
+                <button type="button" onClick={() => removeTime(index)} className="btn btn-cancel btn-sm">✕</button>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={addTime} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', padding: '0.25rem 0' }}>
+            + Add another time
+          </button>
         </div>
         <div className="admin-form-group">
           <label htmlFor="duration">Duration (minutes)</label>

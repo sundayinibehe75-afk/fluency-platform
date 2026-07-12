@@ -27,10 +27,11 @@ export function AuthProvider({ children }) {
     const storedToken = localStorage.getItem('token')
     if (storedToken) {
       const decoded = decodeJwtPayload(storedToken)
-      if (decoded) {
+      if (decoded && decoded.exp && decoded.exp * 1000 > Date.now()) {
         setToken(storedToken)
         setUser(decoded)
       } else {
+        // Token is invalid or expired — clear it
         localStorage.removeItem('token')
       }
     }
