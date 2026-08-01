@@ -175,6 +175,7 @@ async def confirm_booking(
         slot.status = "booked"
 
     await db.flush()
+    await db.refresh(booking)
 
     # Send booking confirmation email (fire-and-forget)
     try:
