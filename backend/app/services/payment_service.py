@@ -155,42 +155,15 @@ async def _handle_checkout_completed(
     """Handle checkout.session.completed event."""
     session = event["data"]["object"]
 
-    # DEBUG: Log the actual type and structure of the session object
-    logger.info(
-        "DEBUG webhook session object",
-        extra={
-            "session_type": str(type(session)),
-            "session_keys": list(session.keys()) if hasattr(session, "keys") else dir(session),
-            "session_repr": repr(session)[:2000],
-        },
-    )
-
-    # DEBUG: Log metadata access patterns specifically
-    try:
-        metadata_via_get = session.get("metadata")
-    except Exception as e:
-        metadata_via_get = f"ERROR: {type(e).__name__}: {e}"
-    try:
-        metadata_via_bracket = session["metadata"]
-    except Exception as e:
-        metadata_via_bracket = f"ERROR: {type(e).__name__}: {e}"
-    try:
-        metadata_via_attr = session.metadata
-    except Exception as e:
-        metadata_via_attr = f"ERROR: {type(e).__name__}: {e}"
-    logger.info(
-        "DEBUG webhook metadata access",
-        extra={
-            "metadata_via_get": repr(metadata_via_get),
-            "metadata_via_bracket": repr(metadata_via_bracket),
-            "metadata_via_attr": repr(metadata_via_attr),
-        },
-    )
-
-    # Extract booking_id from metadata or find by session_id
+    # Extract booking_id from metadata (gracefully — metadata may be empty
+    # or inaccessible depending on Stripe API version/webhook config)
     booking_id_str = None
-    if hasattr(session, "metadata") and session.metadata:
-        booking_id_str = session.metadata.get("booking_id")
+    try:
+        metadata = session.get("metadata") or session.metadata
+        if metadata:
+            booking_id_str = metadata.get("booking_id") if hasattr(metadata, "get") else None
+    except Exception:
+        pass
     booking = None
 
     if booking_id_str:
@@ -202,7 +175,7 @@ async def _handle_checkout_completed(
 
     if booking is None:
         # Fallback: find by stripe_session_id
-        stripe_session_id = session.id
+        stripe_session_id = session.get("id") or session.id
         result = await db.execute(
             select(Booking).where(Booking.stripe_session_id == stripe_session_id)
         )
@@ -216,7 +189,7 @@ async def _handle_checkout_completed(
         return
 
     # Store payment intent ID on booking
-    payment_intent_id = session.payment_intent
+    payment_intent_id = session.get("payment_intent") or getattr(session, "payment_intent", None)
     if payment_intent_id:
         booking.stripe_payment_intent_id = payment_intent_id
 
