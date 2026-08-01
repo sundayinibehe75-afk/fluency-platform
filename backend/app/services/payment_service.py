@@ -153,17 +153,15 @@ async def _handle_checkout_completed(
     db: AsyncSession,
 ) -> None:
     """Handle checkout.session.completed event."""
-    session = event["data"]["object"]
+    # Convert Stripe object to a plain dict so all access patterns work reliably
+    session = dict(event["data"]["object"])
 
-    # Extract booking_id from metadata (gracefully — metadata may be empty
-    # or inaccessible depending on Stripe API version/webhook config)
+    # Extract booking_id from metadata (may be empty depending on
+    # Stripe API version/webhook config)
     booking_id_str = None
-    try:
-        metadata = session.get("metadata") or session.metadata
-        if metadata:
-            booking_id_str = metadata.get("booking_id") if hasattr(metadata, "get") else None
-    except Exception:
-        pass
+    metadata = session.get("metadata")
+    if metadata and isinstance(metadata, dict):
+        booking_id_str = metadata.get("booking_id")
     booking = None
 
     if booking_id_str:
@@ -175,7 +173,7 @@ async def _handle_checkout_completed(
 
     if booking is None:
         # Fallback: find by stripe_session_id
-        stripe_session_id = session.get("id") or session.id
+        stripe_session_id = session.get("id")
         result = await db.execute(
             select(Booking).where(Booking.stripe_session_id == stripe_session_id)
         )
@@ -189,7 +187,7 @@ async def _handle_checkout_completed(
         return
 
     # Store payment intent ID on booking
-    payment_intent_id = session.get("payment_intent") or getattr(session, "payment_intent", None)
+    payment_intent_id = session.get("payment_intent")
     if payment_intent_id:
         booking.stripe_payment_intent_id = payment_intent_id
 
@@ -222,10 +220,11 @@ async def _handle_refund_updated(
     db: AsyncSession,
 ) -> None:
     """Handle charge.refund.updated event — record refund and update booking status."""
-    refund_obj = event["data"]["object"]
-    payment_intent_id = getattr(refund_obj, "payment_intent", None)
-    amount_refunded = getattr(refund_obj, "amount", 0)
-    currency = getattr(refund_obj, "currency", "usd").upper()
+    # Convert Stripe object to a plain dict for reliable access
+    refund_obj = dict(event["data"]["object"])
+    payment_intent_id = refund_obj.get("payment_intent")
+    amount_refunded = refund_obj.get("amount", 0)
+    currency = refund_obj.get("currency", "usd").upper()
 
     # Find booking by stripe_payment_intent_id
     booking = None
