@@ -23,7 +23,6 @@ from app.core.config import settings
 from app.models.booking import Booking
 from app.models.payment import Payment
 from app.schemas.payments import CheckoutSessionResponse
-from app.services import booking_service
 
 # Configure stripe at module level
 stripe.api_key = settings.stripe_secret_key
@@ -153,7 +152,11 @@ async def _handle_checkout_completed(
     stripe_event_id: str,
     db: AsyncSession,
 ) -> None:
-    """Handle checkout.session.completed event."""
+    """Handle checkout.session.completed event.
+    
+    Confirms the booking and records the payment inline (without delegating
+    to confirm_booking) to avoid MissingGreenlet issues from lazy loads.
+    """
     session = event["data"]["object"]  # plain dict from json.loads
 
     # Extract booking_id from metadata
@@ -185,6 +188,12 @@ async def _handle_checkout_completed(
         )
         return
 
+    # Capture values we need BEFORE any flush (to avoid lazy load issues)
+    booking_id_val = booking.id
+    booking_price_cents = booking.price_cents
+    booking_currency = booking.currency
+    booking_slot_id = booking.slot_id
+
     # Store payment intent ID on booking
     payment_intent_id = session.get("payment_intent")
     if payment_intent_id:
@@ -192,22 +201,35 @@ async def _handle_checkout_completed(
 
     # Record payment
     payment = Payment(
-        booking_id=booking.id,
+        booking_id=booking_id_val,
         stripe_event_id=stripe_event_id,
         event_type="checkout.session.completed",
-        amount_cents=booking.price_cents,
-        currency=booking.currency,
+        amount_cents=booking_price_cents,
+        currency=booking_currency,
         status="succeeded",
     )
     db.add(payment)
 
-    # Confirm the booking
-    await booking_service.confirm_booking(db, booking.id)
+    # Confirm the booking inline (set status, mark slot as booked)
+    booking.status = "confirmed"
+    booking.reserved_until = None
+
+    # Update the slot status
+    from app.models.availability_slot import AvailabilitySlot
+    slot_result = await db.execute(
+        select(AvailabilitySlot).where(AvailabilitySlot.id == booking_slot_id)
+    )
+    slot = slot_result.scalar_one_or_none()
+    if slot is not None:
+        slot.status = "booked"
+
+    # Flush all changes — after this, don't access ORM objects
+    await db.flush()
 
     logger.info(
         "Booking confirmed via webhook",
         extra={
-            "booking_id": str(booking.id),
+            "booking_id": str(booking_id_val),
             "stripe_event_id": stripe_event_id,
         },
     )
