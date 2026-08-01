@@ -84,13 +84,8 @@ export default function Contact() {
             <button onClick={() => setModalOpen(true)} className="btn btn-primary">
               Send a Message
             </button>
-            <a href="mailto:fluencylangtutoring@gmail.com" className="btn btn-outline" style={{ color: 'var(--black)', borderColor: 'var(--border)' }}>
-              Email Me Directly
-            </a>
           </div>
           <div style={{ marginTop: '1.5rem', color: 'var(--gray)', fontSize: '0.95rem' }}>
-            <span>📧 fluencylangtutoring@gmail.com</span>
-            <span style={{ margin: '0 1rem' }}>•</span>
             <span>🕐 Response within 24 hours</span>
           </div>
         </div>
