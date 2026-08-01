@@ -165,6 +165,28 @@ async def _handle_checkout_completed(
         },
     )
 
+    # DEBUG: Log metadata access patterns specifically
+    try:
+        metadata_via_get = session.get("metadata")
+    except Exception as e:
+        metadata_via_get = f"ERROR: {type(e).__name__}: {e}"
+    try:
+        metadata_via_bracket = session["metadata"]
+    except Exception as e:
+        metadata_via_bracket = f"ERROR: {type(e).__name__}: {e}"
+    try:
+        metadata_via_attr = session.metadata
+    except Exception as e:
+        metadata_via_attr = f"ERROR: {type(e).__name__}: {e}"
+    logger.info(
+        "DEBUG webhook metadata access",
+        extra={
+            "metadata_via_get": repr(metadata_via_get),
+            "metadata_via_bracket": repr(metadata_via_bracket),
+            "metadata_via_attr": repr(metadata_via_attr),
+        },
+    )
+
     # Extract booking_id from metadata or find by session_id
     booking_id_str = None
     if hasattr(session, "metadata") and session.metadata:
