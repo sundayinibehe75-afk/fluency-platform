@@ -10,6 +10,7 @@ Price configs seeding (price_configs table):
 - monthly_package: 16000 cents (USD)
 - intensive_package: 28000 cents (USD)
 """
+import json
 import logging
 import uuid
 
@@ -104,15 +105,12 @@ async def handle_webhook(
 ) -> dict:
     """Verify and process a Stripe webhook event.
 
-    Verifies the webhook signature. On checkout.session.completed, confirms
-    the booking. On charge.refund.updated, records the refund and updates
-    booking status. Uses stripe_event_id as idempotency key.
-
-    Returns a dict with status information.
+    Verifies the webhook signature using construct_event, then parses the
+    raw_body as JSON to get a plain dict (avoids StripeObject access issues).
     """
-    # Verify webhook signature
+    # Verify webhook signature (this validates authenticity)
     try:
-        event = stripe.Webhook.construct_event(
+        stripe.Webhook.construct_event(
             raw_body, stripe_signature, settings.stripe_webhook_secret
         )
     except (stripe.error.SignatureVerificationError, ValueError) as e:
@@ -124,6 +122,9 @@ async def handle_webhook(
                 "detail": "Webhook signature verification failed.",
             },
         )
+
+    # Parse raw body as plain JSON dict — no StripeObject quirks
+    event = json.loads(raw_body)
 
     stripe_event_id = event["id"]
 
@@ -153,14 +154,12 @@ async def _handle_checkout_completed(
     db: AsyncSession,
 ) -> None:
     """Handle checkout.session.completed event."""
-    # Convert Stripe object to a plain dict so all access patterns work reliably
-    session = dict(event["data"]["object"])
+    session = event["data"]["object"]  # plain dict from json.loads
 
-    # Extract booking_id from metadata (may be empty depending on
-    # Stripe API version/webhook config)
+    # Extract booking_id from metadata
     booking_id_str = None
-    metadata = session.get("metadata")
-    if metadata and isinstance(metadata, dict):
+    metadata = session.get("metadata") or {}
+    if isinstance(metadata, dict):
         booking_id_str = metadata.get("booking_id")
     booking = None
 
@@ -220,8 +219,7 @@ async def _handle_refund_updated(
     db: AsyncSession,
 ) -> None:
     """Handle charge.refund.updated event — record refund and update booking status."""
-    # Convert Stripe object to a plain dict for reliable access
-    refund_obj = dict(event["data"]["object"])
+    refund_obj = event["data"]["object"]  # plain dict from json.loads
     payment_intent_id = refund_obj.get("payment_intent")
     amount_refunded = refund_obj.get("amount", 0)
     currency = refund_obj.get("currency", "usd").upper()
