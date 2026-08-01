@@ -156,7 +156,9 @@ async def _handle_checkout_completed(
     session = event["data"]["object"]
 
     # Extract booking_id from metadata or find by session_id
-    booking_id_str = session.get("metadata", {}).get("booking_id")
+    booking_id_str = None
+    if hasattr(session, "metadata") and session.metadata:
+        booking_id_str = session.metadata.get("booking_id")
     booking = None
 
     if booking_id_str:
@@ -168,7 +170,7 @@ async def _handle_checkout_completed(
 
     if booking is None:
         # Fallback: find by stripe_session_id
-        stripe_session_id = session.get("id")
+        stripe_session_id = session.id
         result = await db.execute(
             select(Booking).where(Booking.stripe_session_id == stripe_session_id)
         )
@@ -182,7 +184,7 @@ async def _handle_checkout_completed(
         return
 
     # Store payment intent ID on booking
-    payment_intent_id = session.get("payment_intent")
+    payment_intent_id = session.payment_intent
     if payment_intent_id:
         booking.stripe_payment_intent_id = payment_intent_id
 
@@ -216,9 +218,9 @@ async def _handle_refund_updated(
 ) -> None:
     """Handle charge.refund.updated event — record refund and update booking status."""
     refund_obj = event["data"]["object"]
-    payment_intent_id = refund_obj.get("payment_intent")
-    amount_refunded = refund_obj.get("amount", 0)
-    currency = refund_obj.get("currency", "usd").upper()
+    payment_intent_id = getattr(refund_obj, "payment_intent", None)
+    amount_refunded = getattr(refund_obj, "amount", 0)
+    currency = getattr(refund_obj, "currency", "usd").upper()
 
     # Find booking by stripe_payment_intent_id
     booking = None

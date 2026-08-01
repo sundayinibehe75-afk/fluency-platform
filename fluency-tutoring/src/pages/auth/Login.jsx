@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import Nav from '../../components/Nav'
@@ -13,7 +13,6 @@ export default function Login() {
 
   const api = useApi()
   const { user, login } = useAuth()
-  const navigate = useNavigate()
 
   // If already logged in, redirect away
   if (user) {
@@ -28,13 +27,8 @@ export default function Login() {
     try {
       const res = await api.post('/auth/login', { email, password })
       login(res.data.access_token)
-      // Redirect based on role
-      const payload = JSON.parse(atob(res.data.access_token.split('.')[1]))
-      if (payload.role === 'admin') {
-        navigate('/admin')
-      } else {
-        navigate('/dashboard')
-      }
+      // The existing guard at the top of this component will handle the
+      // redirect once React re-renders with the updated user state.
     } catch (err) {
       if (err.response && err.response.status === 401) {
         setError('Invalid email or password. Please try again.')
