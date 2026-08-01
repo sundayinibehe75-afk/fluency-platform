@@ -155,6 +155,16 @@ async def _handle_checkout_completed(
     """Handle checkout.session.completed event."""
     session = event["data"]["object"]
 
+    # DEBUG: Log the actual type and structure of the session object
+    logger.info(
+        "DEBUG webhook session object",
+        extra={
+            "session_type": str(type(session)),
+            "session_keys": list(session.keys()) if hasattr(session, "keys") else dir(session),
+            "session_repr": repr(session)[:2000],
+        },
+    )
+
     # Extract booking_id from metadata or find by session_id
     booking_id_str = None
     if hasattr(session, "metadata") and session.metadata:
