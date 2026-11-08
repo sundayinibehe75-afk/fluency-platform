@@ -3,6 +3,8 @@
 Run with: docker-compose exec api python seed.py
 """
 import asyncio
+import os
+import sys
 import uuid
 
 from app.core.security import hash_password
@@ -12,11 +14,21 @@ from app.models.user import User
 from app.models.price_config import PriceConfig
 
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+
 async def seed():
+    if not ADMIN_EMAIL or len(ADMIN_PASSWORD) < 12:
+        sys.exit(
+            "Set ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters), e.g.\n"
+            "  docker compose exec -e ADMIN_EMAIL=you@example.com "
+            "-e ADMIN_PASSWORD='...' api python seed.py"
+        )
     async with AsyncSessionLocal() as db:
         # Check if admin already exists
         from sqlalchemy import select
-        result = await db.execute(select(User).where(User.email == "admin@fluencytutoring.com"))
+        result = await db.execute(select(User).where(User.role == "admin"))
         existing = result.scalar_one_or_none()
 
         if existing:
@@ -26,8 +38,8 @@ async def seed():
         # Create admin user
         admin = User(
             id=uuid.uuid4(),
-            email="admin@fluencytutoring.com",
-            password_hash=hash_password("admin1234"),
+            email=ADMIN_EMAIL,
+            password_hash=hash_password(ADMIN_PASSWORD),
             first_name="Admin",
             last_name="Tutor",
             role="admin",
@@ -59,8 +71,7 @@ async def seed():
 
         await db.commit()
         print("✅ Seed complete!")
-        print(f"   Admin email: admin@fluencytutoring.com")
-        print(f"   Admin password: admin1234")
+        print(f"   Admin email: {ADMIN_EMAIL}")
         print(f"   Tutor ID: 00000000-0000-0000-0000-000000000001")
         print(f"   Price configs: single_session=$45, monthly=$160, intensive=$280")
 
