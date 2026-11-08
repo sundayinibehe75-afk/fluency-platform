@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { toLocalTime, formatDate } from '../../utils/dateUtils'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { getErrorMessage } from '../../utils/errors'
 
 // Hardcoded tutor_id for v1 single-tutor setup — will be dynamic in v2
 const TUTOR_ID = import.meta.env.VITE_TUTOR_ID || '00000000-0000-0000-0000-000000000001'
@@ -84,7 +85,7 @@ export default function BookingCalendar() {
       // Step 3: Redirect to Stripe Checkout
       window.location.href = sessionUrl
     } catch (err) {
-      const detail = err.response?.data?.detail || 'Something went wrong. Please try again.'
+      const detail = getErrorMessage(err)
       setError(detail)
       setSelectedSlot(null)
       setBooking(false)

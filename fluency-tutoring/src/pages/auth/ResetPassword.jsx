@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { getErrorMessage } from '../../utils/errors'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
@@ -38,7 +39,7 @@ function RequestForm() {
       setSubmitted(true)
     } catch (err) {
       if (err.response && err.response.data) {
-        setError(err.response.data.detail || 'Something went wrong. Please try again.')
+        setError(getErrorMessage(err))
       } else {
         setError('Network error. Please check your connection and try again.')
       }
@@ -117,7 +118,7 @@ function ConfirmForm({ token }) {
       setSuccess(true)
     } catch (err) {
       if (err.response && err.response.data) {
-        setError(err.response.data.detail || 'Invalid or expired token. Please request a new reset link.')
+        setError(getErrorMessage(err, 'Invalid or expired token. Please request a new reset link.'))
       } else {
         setError('Network error. Please check your connection and try again.')
       }

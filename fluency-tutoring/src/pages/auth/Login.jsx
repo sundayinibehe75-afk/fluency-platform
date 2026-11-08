@@ -30,7 +30,9 @@ export default function Login() {
       // The existing guard at the top of this component will handle the
       // redirect once React re-renders with the updated user state.
     } catch (err) {
-      if (err.response && err.response.status === 401) {
+      if (err.response && err.response.status === 429) {
+        setError('Too many login attempts. Please wait a minute and try again.')
+      } else if (err.response && err.response.status === 401) {
         setError('Invalid email or password. Please try again.')
       } else if (err.response && err.response.data) {
         setError('Invalid email or password. Please try again.')

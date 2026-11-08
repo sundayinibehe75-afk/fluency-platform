@@ -5,6 +5,7 @@ import { useApi } from '../../hooks/useApi'
 import { formatDate } from '../../utils/dateUtils'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { getErrorMessage } from '../../utils/errors'
 
 export default function StudentDashboard() {
   const { user } = useAuth()
@@ -31,17 +32,25 @@ export default function StudentDashboard() {
     }
   }
 
-  async function handleCancel(bookingId) {
-    if (!window.confirm('Are you sure you want to cancel this booking?')) return
+  async function handleCancel(booking) {
+    const hoursLeft = (new Date(booking.start_at) - new Date()) / 36e5
+    const paid = booking.status === 'confirmed'
+    const message =
+      paid && hoursLeft < 12
+        ? 'This lesson starts in less than 12 hours, so it will not be refunded. Cancel anyway?'
+        : paid
+          ? 'Cancel this lesson? You will receive a full refund.'
+          : 'Cancel this booking?'
+    if (!window.confirm(message)) return
     try {
-      setCancellingId(bookingId)
-      await api.post(`/bookings/${bookingId}/cancel`)
+      setCancellingId(booking.id)
+      await api.post(`/bookings/${booking.id}/cancel`)
       setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b))
+        prev.map((b) => (b.id === booking.id ? { ...b, status: 'cancelled' } : b))
       )
     } catch (err) {
       console.error('Failed to cancel booking:', err)
-      alert('Failed to cancel booking. Please try again.')
+      alert(getErrorMessage(err, 'Failed to cancel booking. Please try again.'))
     } finally {
       setCancellingId(null)
     }
@@ -121,7 +130,7 @@ export default function StudentDashboard() {
                           )}
                           {isMoreThan24hBefore(booking) && (
                             <button
-                              onClick={() => handleCancel(booking.id)}
+                              onClick={() => handleCancel(booking)}
                               disabled={cancellingId === booking.id}
                               className="btn btn-cancel btn-sm"
                             >

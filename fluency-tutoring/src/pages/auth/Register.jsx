@@ -4,6 +4,7 @@ import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { getErrorMessage } from '../../utils/errors'
 
 export default function Register() {
   const [firstName, setFirstName] = useState('')
@@ -40,8 +41,7 @@ export default function Register() {
       navigate('/dashboard')
     } catch (err) {
       if (err.response && err.response.data) {
-        const data = err.response.data
-        setError(data.detail || data.error || 'Registration failed. Please try again.')
+        setError(getErrorMessage(err, 'Registration failed. Please try again.'))
       } else {
         setError('Network error. Please check your connection and try again.')
       }

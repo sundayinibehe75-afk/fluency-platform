@@ -203,7 +203,7 @@ function AvailabilityTab() {
         const res = await api.post('/availability', body)
         totalCreated += res.data.length
       } catch (err) {
-        const detail = err.response?.data?.detail?.detail || err.response?.data?.detail || 'Failed'
+        const detail = getErrorMessage(err, 'Failed')
         errors.push(`${time}: ${detail}`)
       }
     }
@@ -399,7 +399,7 @@ function TutorProfileTab() {
       setMessage('Profile updated successfully.')
     } catch (err) {
       console.error('Failed to update tutor profile:', err)
-      const detail = err.response?.data?.detail || 'Failed to update profile.'
+      const detail = getErrorMessage(err, 'Failed to update profile.')
       setMessage(detail)
     } finally {
       setSaving(false)
