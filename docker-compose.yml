@@ -18,6 +18,7 @@ services:
 
   api:
     build: ./backend
+    image: ghcr.io/sundayinibehe75-afk/fluency-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -36,6 +37,7 @@ services:
 
   frontend:
     build: ./fluency-tutoring
+    image: ghcr.io/sundayinibehe75-afk/fluency-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     expose:
       - "80"

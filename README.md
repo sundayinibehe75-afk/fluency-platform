@@ -83,8 +83,7 @@ fluency-platform/
 │   ├── Dockerfile            # multi-stage: Node build → Nginx
 │   └── nginx.conf
 ├── proxy/nginx.conf          # reverse proxy and TLS termination
-├── docker-compose.yml        # local / build-based setup
-├── docker-compose.prod.yml   # production override: uses images from GHCR
+├── docker-compose.yml        # one file: builds locally, or pulls pipeline images on the server
 ├── .github/workflows/ci-cd.yml
 └── .env.example              # all required environment variables
 ```
@@ -163,7 +162,7 @@ Every push to `main` runs the GitHub Actions pipeline in `.github/workflows/ci-c
 3. **Scan:** each image is scanned with **Trivy**; any fixable HIGH or CRITICAL vulnerability stops the pipeline.
 4. **Push:** images that pass the scan are pushed to GitHub Container Registry.
 5. **Approve:** the `production` environment requires a manual approval before deployment.
-6. **Deploy:** the pipeline connects to the server over SSH, pulls the new images and restarts the stack with `docker-compose.prod.yml`, then runs a health check.
+6. **Deploy:** the pipeline connects to the server over SSH, pulls the new images and restarts the stack, then runs a health check.
 
 Deployment secrets (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) are stored in the GitHub `production` environment.
 
@@ -176,8 +175,8 @@ On the server (Ubuntu on AWS EC2):
 ```bash
 cd ~/fluency-platform
 export IMAGE_TAG=<commit-sha>        # or leave unset to use "latest"
-docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api frontend
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+docker compose pull api frontend
+docker compose up -d --no-build
 ```
 
 The server runs the images built and scanned by the pipeline, not images built on the server. Rolling back means deploying an earlier commit SHA.
