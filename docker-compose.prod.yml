@@ -1,0 +1,9 @@
+# Used together with docker-compose.yml on the VM:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+# It makes the api and frontend services use the images the pipeline pushed,
+# instead of building them on the VM.
+services:
+  api:
+    image: ghcr.io/sundayinibehe75-afk/fluency-api:${IMAGE_TAG:-latest}
+  frontend:
+    image: ghcr.io/sundayinibehe75-afk/fluency-frontend:${IMAGE_TAG:-latest}
