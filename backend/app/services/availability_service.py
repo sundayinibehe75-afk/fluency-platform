@@ -212,12 +212,15 @@ async def update_slot(
 async def delete_slot(
     db: AsyncSession,
     slot_id: uuid.UUID,
+    actor=None,
 ) -> None:
-    """Delete an availability slot.
+    """Remove an availability slot.
 
-    If the slot has a confirmed booking, the booking is cancelled
-    (status set to 'cancelled'), the slot is released, and a log entry
-    is created indicating a notification should be sent.
+    - An active booking on the slot is cancelled first through the normal
+      cancellation flow (student is emailed and, if paid, refunded).
+    - A slot that has any booking history is hidden (status 'removed') rather
+      than deleted, because past bookings and payments still point to it.
+    - A slot that was never booked is deleted.
 
     Raises HTTP 404 if slot not found.
     """
@@ -232,8 +235,7 @@ async def delete_slot(
             detail={"error": "NOT_FOUND", "detail": "Slot not found."},
         )
 
-    # Check for associated booking
-    booking_result = await db.execute(
+    active_result = await db.execute(
         select(Booking).where(
             and_(
                 Booking.slot_id == slot_id,
@@ -241,18 +243,20 @@ async def delete_slot(
             )
         )
     )
-    booking = booking_result.scalar_one_or_none()
+    active = active_result.scalar_one_or_none()
+    if active is not None and actor is not None:
+        from app.services.booking_service import cancel_booking
 
-    if booking is not None:
-        booking.status = "cancelled"
-        logger.info(
-            "Booking cancelled due to slot deletion — notification should be sent",
-            extra={
-                "booking_id": str(booking.id),
-                "student_id": str(booking.student_id),
-                "slot_id": str(slot_id),
-            },
-        )
+        await cancel_booking(db, active.id, actor)
+    elif active is not None:
+        active.status = "cancelled"
 
-    await db.delete(slot)
+    history_result = await db.execute(
+        select(Booking.id).where(Booking.slot_id == slot_id).limit(1)
+    )
+    if history_result.first() is not None:
+        slot.status = "removed"
+        logger.info("Slot hidden (has booking history)", extra={"slot_id": str(slot_id)})
+    else:
+        await db.delete(slot)
     await db.flush()

@@ -41,8 +41,8 @@ class AvailabilitySlot(Base):
     tutor: Mapped["Tutor"] = relationship(  # noqa: F821
         "Tutor", back_populates="availability_slots"
     )
-    booking: Mapped["Booking | None"] = relationship(  # noqa: F821
-        "Booking", back_populates="slot", uselist=False
+    bookings: Mapped[list["Booking"]] = relationship(  # noqa: F821
+        "Booking", back_populates="slot"
     )
 
     __table_args__ = (

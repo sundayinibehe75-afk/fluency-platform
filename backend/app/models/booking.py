@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import text, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,7 +29,6 @@ class Booking(Base):
         UUID(as_uuid=True),
         ForeignKey("availability_slots.id", ondelete="RESTRICT"),
         nullable=False,
-        unique=True,
     )
     # pending_payment | confirmed | cancelled | completed | refunded
     status: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -66,7 +65,7 @@ class Booking(Base):
         "Tutor", foreign_keys=[tutor_id], back_populates="bookings"
     )
     slot: Mapped["AvailabilitySlot"] = relationship(  # noqa: F821
-        "AvailabilitySlot", back_populates="booking"
+        "AvailabilitySlot", back_populates="bookings"
     )
     payments: Mapped[list["Payment"]] = relationship(  # noqa: F821
         "Payment", back_populates="booking"
@@ -79,6 +78,14 @@ class Booking(Base):
         Index("bookings_student_idx", "student_id"),
         Index("bookings_tutor_idx", "tutor_id"),
         Index("bookings_status_idx", "status"),
+        # A slot can have many bookings over time (cancelled, expired, ...),
+        # but only one active booking at a time.
+        Index(
+            "bookings_active_slot_uidx",
+            "slot_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending_payment', 'confirmed')"),
+        ),
     )
 
     def __repr__(self) -> str:

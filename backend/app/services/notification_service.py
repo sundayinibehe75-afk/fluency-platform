@@ -23,8 +23,8 @@ resend.api_key = settings.resend_api_key
 # Directory containing HTML email templates
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
-# Sender address for all outgoing emails
-FROM_EMAIL = "Fluency Tutoring <noreply@fluencytutoring.com>"
+# Sender address for all outgoing emails (must be a domain verified in Resend)
+FROM_EMAIL = settings.email_from
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -126,6 +126,22 @@ async def send_email(to: str, template_name: str, context: dict) -> None:
             "max_retries": MAX_RETRIES,
         },
     )
+
+
+# Keep references to background email tasks so they are not garbage-collected
+_background_tasks: set[asyncio.Task] = set()
+
+
+def send_email_later(to: str, template_name: str, context: dict) -> None:
+    """Send an email in the background without making the request wait.
+
+    send_email retries with back-off (up to several seconds), so calling it
+    directly inside a request handler would delay the response. This schedules
+    it on the running event loop instead.
+    """
+    task = asyncio.create_task(send_email(to, template_name, context))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _get_subject(template_name: str, context: dict) -> str:

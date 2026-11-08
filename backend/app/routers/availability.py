@@ -78,11 +78,11 @@ async def delete_slot(
 ) -> None:
     """Delete an availability slot (admin only).
 
-    If the slot has a confirmed booking, the booking is cancelled and
-    a notification is logged for the affected student.
+    An active booking on the slot is cancelled (student emailed, refunded if
+    paid). Slots with booking history are hidden rather than deleted.
 
     - 204 No Content on success
     - 403 Forbidden if user is not admin
     - 404 Not Found if slot does not exist
     """
-    await availability_service.delete_slot(db, slot_id)
+    await availability_service.delete_slot(db, slot_id, actor=current_user)

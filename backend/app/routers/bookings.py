@@ -63,13 +63,16 @@ async def cancel_booking(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("student", "admin")),
 ) -> dict:
-    """Cancel a booking. Returns whether a refund is applicable."""
-    should_refund = await booking_service.cancel_booking(
+    """Cancel a booking (own booking for students, any booking for admins).
+
+    Returns whether a refund was issued.
+    """
+    refunded = await booking_service.cancel_booking(
         db=db,
         booking_id=booking_id,
-        actor_id=current_user.id,
+        actor=current_user,
     )
     return {
         "status": "cancelled",
-        "refund_applicable": should_refund,
+        "refund_issued": refunded,
     }

@@ -13,6 +13,7 @@ Price configs seeding (price_configs table):
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from fastapi import HTTPException, status
@@ -70,6 +71,17 @@ async def create_checkout_session(
             },
         )
 
+    # Reservation window expired — the slot may already be released
+    now = datetime.now(tz=timezone.utc)
+    if booking.reserved_until is not None and booking.reserved_until < now:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "RESERVATION_EXPIRED",
+                "detail": "Your reservation has expired. Please choose the slot again.",
+            },
+        )
+
     # Create Stripe Checkout Session
     session = stripe.checkout.Session.create(
         mode="payment",
@@ -88,6 +100,9 @@ async def create_checkout_session(
         success_url=f"{settings.frontend_url}/booking/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{settings.frontend_url}/booking/cancelled",
         metadata={"booking_id": str(booking.id)},
+        # Stripe stops accepting payment when our reservation ends (Stripe's
+        # minimum is 30 minutes, so the later of the two is used).
+        expires_at=int(max(booking.reserved_until or now, now + timedelta(minutes=31)).timestamp()),
     )
 
     # Store stripe_session_id on booking
@@ -210,12 +225,37 @@ async def _handle_checkout_completed(
     )
     db.add(payment)
 
+    from app.models.availability_slot import AvailabilitySlot
+
+    # If the reservation expired before payment arrived, the slot may already
+    # belong to someone else. In that case refund instead of double-booking.
+    if booking.status == "cancelled":
+        other_result = await db.execute(
+            select(Booking).where(
+                Booking.slot_id == booking_slot_id,
+                Booking.id != booking_id_val,
+                Booking.status.in_(["pending_payment", "confirmed"]),
+            )
+        )
+        if other_result.scalar_one_or_none() is not None:
+            await db.flush()
+            logger.warning(
+                "Payment arrived for an expired booking whose slot was taken — refunding",
+                extra={"booking_id": str(booking_id_val)},
+            )
+            try:
+                await initiate_refund(db, booking_id_val)
+            except Exception:
+                logger.exception(
+                    "Automatic refund failed — needs manual follow-up",
+                    extra={"booking_id": str(booking_id_val)},
+                )
+            return
+
     # Confirm the booking inline (set status, mark slot as booked)
     booking.status = "confirmed"
     booking.reserved_until = None
 
-    # Update the slot status
-    from app.models.availability_slot import AvailabilitySlot
     slot_result = await db.execute(
         select(AvailabilitySlot).where(AvailabilitySlot.id == booking_slot_id)
     )
@@ -225,6 +265,11 @@ async def _handle_checkout_completed(
 
     # Flush all changes — after this, don't access ORM objects
     await db.flush()
+
+    # Confirmation email + video room (never raises)
+    from app.services.booking_service import notify_booking_confirmed
+
+    await notify_booking_confirmed(db, booking_id_val)
 
     logger.info(
         "Booking confirmed via webhook",
@@ -290,7 +335,7 @@ async def _handle_refund_updated(
 async def initiate_refund(
     db: AsyncSession,
     booking_id: uuid.UUID,
-) -> None:
+) -> bool:
     """Initiate a refund for a booking via Stripe Refunds API.
 
     Fetches the booking and calls stripe.Refund.create with the
@@ -312,7 +357,7 @@ async def initiate_refund(
             "Cannot refund booking without payment intent ID: %s",
             str(booking_id),
         )
-        return
+        return False
 
     stripe.Refund.create(payment_intent=booking.stripe_payment_intent_id)
 
@@ -323,3 +368,4 @@ async def initiate_refund(
             "payment_intent_id": booking.stripe_payment_intent_id,
         },
     )
+    return True

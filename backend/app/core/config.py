@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     # Resend (transactional email)                                         #
     # ------------------------------------------------------------------ #
     resend_api_key: str
+    # Sender shown on outgoing emails; the domain must be verified in Resend
+    email_from: str = "Fluency German <noreply@fluencygerman.com>"
 
     # ------------------------------------------------------------------ #
     # Daily.co (video lessons)                                             #
@@ -55,6 +57,9 @@ class Settings(BaseSettings):
 
     # Deployment environment: development | staging | production
     environment: str = "development"
+
+    # Run periodic jobs (expire unpaid bookings, complete lessons, reminders)
+    background_jobs_enabled: bool = True
 
 
 # Module-level singleton — import this everywhere settings are needed.

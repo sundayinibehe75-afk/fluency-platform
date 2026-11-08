@@ -10,8 +10,10 @@ Responsibilities:
   a full stack trace and returns a generic 500 JSON response
 - Mount all API routers under the /api prefix
 """
+import asyncio
 import logging
 import traceback
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,6 +81,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
+# Lifespan — start and stop the periodic background jobs
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    tasks = []
+    if settings.background_jobs_enabled:
+        from app.tasks.scheduler import start_background_jobs
+
+        tasks = start_background_jobs()
+        logger.info("Background jobs started", extra={"jobs": len(tasks)})
+    yield
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 def create_app() -> FastAPI:
@@ -86,6 +105,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Fluency Platform API",
         version="1.0.0",
+        lifespan=lifespan,
         # Disable the default /docs and /redoc in production
         docs_url="/docs" if settings.environment != "production" else None,
         redoc_url="/redoc" if settings.environment != "production" else None,

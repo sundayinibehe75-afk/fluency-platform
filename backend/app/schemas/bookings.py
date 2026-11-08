@@ -29,6 +29,7 @@ class BookingResponse(AppBaseModel):
     currency: str
     stripe_session_id: Optional[str] = None
     video_room_url: Optional[str] = None
+    has_review: bool = False
     reserved_until: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None

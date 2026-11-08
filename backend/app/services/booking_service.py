@@ -7,6 +7,8 @@ Functions:
 - get_booking — fetch a single booking with ownership enforcement
 - list_bookings — list bookings for a student or all (admin)
 - expire_pending_bookings — background task to release expired reservations
+- complete_finished_bookings — background task to mark past lessons completed
+- notify_booking_confirmed — send confirmation email and create the video room
 """
 import logging
 import uuid
@@ -15,6 +17,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.availability_slot import AvailabilitySlot
@@ -26,10 +29,17 @@ from app.schemas.bookings import BookingResponse
 logger = logging.getLogger(__name__)
 
 RESERVATION_MINUTES = 15
-REFUND_THRESHOLD_HOURS = 24
+# Students may cancel (with refund) or reschedule only this many hours before
+# the lesson starts. With less notice the lesson counts as used.
+CANCELLATION_NOTICE_HOURS = 12
+ACTIVE_STATUSES = ("pending_payment", "confirmed")
 
 
-def _booking_to_response(booking: Booking, slot: AvailabilitySlot | None = None) -> BookingResponse:
+def _booking_to_response(
+    booking: Booking,
+    slot: AvailabilitySlot | None = None,
+    has_review: bool = False,
+) -> BookingResponse:
     """Convert a Booking ORM object to a BookingResponse, including slot timing."""
     data = {
         "id": booking.id,
@@ -46,6 +56,7 @@ def _booking_to_response(booking: Booking, slot: AvailabilitySlot | None = None)
         "end_at": slot.end_at if slot else None,
         "created_at": booking.created_at,
         "updated_at": booking.updated_at,
+        "has_review": has_review,
     }
     return BookingResponse.model_validate(data)
 
@@ -80,13 +91,19 @@ async def create_booking(
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
         )
 
+    if slot.start_at <= datetime.now(tz=timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "This slot has already started."},
+        )
+
     # Check for existing booking by this student on this slot
     existing_result = await db.execute(
         select(Booking).where(
             and_(
                 Booking.slot_id == slot_id,
                 Booking.student_id == student_id,
-                Booking.status.in_(["pending_payment", "confirmed"]),
+                Booking.status.in_(ACTIVE_STATUSES),
             )
         )
     )
@@ -103,7 +120,7 @@ async def create_booking(
         select(Booking).where(
             and_(
                 Booking.slot_id == slot_id,
-                Booking.status.in_(["pending_payment", "confirmed"]),
+                Booking.status.in_(ACTIVE_STATUSES),
             )
         )
     )
@@ -142,9 +159,63 @@ async def create_booking(
         reserved_until=reserved_until,
     )
     db.add(booking)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Another student booked the same slot at the same moment; the
+        # database's one-active-booking-per-slot rule rejected this one.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
+        )
 
     return _booking_to_response(booking, slot)
+
+
+async def notify_booking_confirmed(db: AsyncSession, booking_id: uuid.UUID) -> None:
+    """Send the confirmation email and create the video room for a booking.
+
+    Called after a booking becomes confirmed (normally from the Stripe
+    webhook). Failures are logged and never raised, so a problem with email or
+    video never undoes a confirmed payment.
+    """
+    from app.core.config import settings
+    from app.services.notification_service import send_email_later
+    from app.services.video_service import create_room
+
+    try:
+        result = await db.execute(
+            select(Booking, AvailabilitySlot, User)
+            .join(AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id)
+            .join(User, Booking.student_id == User.id)
+            .where(Booking.id == booking_id)
+        )
+        row = result.first()
+        if row is not None:
+            booking, slot, student = row
+            send_email_later(
+                to=student.email,
+                template_name="booking_confirmation",
+                context={
+                    "first_name": student.first_name,
+                    "lesson_date": slot.start_at.strftime("%A, %B %d, %Y"),
+                    "lesson_time": slot.start_at.strftime("%H:%M UTC"),
+                    "lesson_url": f"{settings.frontend_url}/lessons/{booking.id}",
+                },
+            )
+    except Exception:
+        logger.exception(
+            "Failed to send booking confirmation email",
+            extra={"booking_id": str(booking_id)},
+        )
+
+    try:
+        await create_room(db, booking_id)
+    except Exception:
+        logger.exception(
+            "Failed to create video room",
+            extra={"booking_id": str(booking_id)},
+        )
 
 
 async def confirm_booking(
@@ -179,48 +250,7 @@ async def confirm_booking(
     if slot is not None:
         await db.refresh(slot)
 
-    # Send booking confirmation email (fire-and-forget)
-    try:
-        from app.services.notification_service import send_email
-        from app.core.config import settings
-
-        # Load student for email
-        student_result = await db.execute(
-            select(User).where(User.id == booking.student_id)
-        )
-        student = student_result.scalar_one_or_none()
-
-        if student and slot:
-            lesson_date = slot.start_at.strftime("%A, %B %d, %Y")
-            lesson_time = slot.start_at.strftime("%H:%M UTC")
-            lesson_url = f"{settings.frontend_url}/lessons/{booking.id}"
-
-            await send_email(
-                to=student.email,
-                template_name="booking_confirmation",
-                context={
-                    "first_name": student.first_name,
-                    "lesson_date": lesson_date,
-                    "lesson_time": lesson_time,
-                    "lesson_url": lesson_url,
-                },
-            )
-    except Exception:
-        logger.exception(
-            "Failed to send booking confirmation email",
-            extra={"booking_id": str(booking_id)},
-        )
-
-    # Create video room for the confirmed booking (fire-and-forget)
-    try:
-        from app.services.video_service import create_room
-
-        await create_room(db, booking.id)
-    except Exception:
-        logger.exception(
-            "Failed to create video room",
-            extra={"booking_id": str(booking_id)},
-        )
+    await notify_booking_confirmed(db, booking.id)
 
     return _booking_to_response(booking, slot)
 
@@ -228,16 +258,20 @@ async def confirm_booking(
 async def cancel_booking(
     db: AsyncSession,
     booking_id: uuid.UUID,
-    actor_id: uuid.UUID,
+    actor: User,
 ) -> bool:
-    """Cancel a booking.
+    """Cancel a booking and release its slot.
 
-    Sets status to cancelled. If the lesson start is more than 24 hours away,
-    returns True to flag for refund. Releases the slot back to available.
-    Logs a notification entry.
+    Rules:
+    - Students can only cancel their own bookings; admins can cancel any.
+    - Only pending_payment and confirmed bookings can be cancelled.
+    - Students cannot cancel a lesson that has already started.
+    - A paid (confirmed) booking is refunded when the admin cancels it, or when
+      the student cancels at least CANCELLATION_NOTICE_HOURS before the start.
+      With less notice the lesson counts as used and is not refunded.
 
     Returns:
-        True if a refund should be issued, False otherwise.
+        True if a refund was issued, False otherwise.
     """
     result = await db.execute(
         select(Booking).where(Booking.id == booking_id)
@@ -250,66 +284,97 @@ async def cancel_booking(
             detail={"error": "NOT_FOUND", "detail": "Booking not found."},
         )
 
-    booking.status = "cancelled"
+    is_admin = actor.role == "admin"
+    if not is_admin and booking.student_id != actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "FORBIDDEN", "detail": "You do not have access to this booking."},
+        )
 
-    # Release the slot back to available
+    if booking.status not in ACTIVE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "VALIDATION_ERROR",
+                "detail": f"A {booking.status.replace('_', ' ')} booking cannot be cancelled.",
+            },
+        )
+
     slot_result = await db.execute(
         select(AvailabilitySlot).where(AvailabilitySlot.id == booking.slot_id)
     )
     slot = slot_result.scalar_one_or_none()
 
-    should_refund = False
-    if slot is not None:
-        slot.status = "available"
-        # Check if >24h before lesson start
-        now = datetime.now(tz=timezone.utc)
-        time_until_lesson = slot.start_at - now
-        if time_until_lesson > timedelta(hours=REFUND_THRESHOLD_HOURS):
-            should_refund = True
+    now = datetime.now(tz=timezone.utc)
+    if slot is not None and not is_admin and slot.start_at <= now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "This lesson has already started."},
+        )
 
-    # Log notification
+    was_paid = booking.status == "confirmed"
+    enough_notice = (
+        slot is not None
+        and slot.start_at - now >= timedelta(hours=CANCELLATION_NOTICE_HOURS)
+    )
+    should_refund = was_paid and (is_admin or enough_notice)
+
+    booking.status = "cancelled"
+    booking.reserved_until = None
+    if slot is not None and slot.status == "booked":
+        slot.status = "available"
+    await db.flush()
+
+    refunded = False
+    if should_refund:
+        try:
+            from app.services.payment_service import initiate_refund
+
+            refunded = await initiate_refund(db, booking.id)
+        except Exception:
+            logger.exception(
+                "Refund failed — needs manual follow-up",
+                extra={"booking_id": str(booking_id)},
+            )
+
     logger.info(
-        "Booking cancelled — notification should be sent",
+        "Booking cancelled",
         extra={
             "booking_id": str(booking_id),
-            "actor_id": str(actor_id),
+            "actor_id": str(actor.id),
             "student_id": str(booking.student_id),
-            "should_refund": should_refund,
+            "refund_issued": refunded,
         },
     )
 
-    await db.flush()
-
-    # Send cancellation email (fire-and-forget)
+    # Cancellation email (sent in the background)
     try:
-        from app.services.notification_service import send_email
         from app.core.config import settings
+        from app.services.notification_service import send_email_later
 
-        # Load student for email
-        student_result = await db.execute(
-            select(User).where(User.id == booking.student_id)
-        )
+        student_result = await db.execute(select(User).where(User.id == booking.student_id))
         student = student_result.scalar_one_or_none()
-
-        if student:
-            # Determine cancellation reason
-            if actor_id == booking.student_id:
-                reason = "Student-initiated cancellation"
+        if student is not None:
+            if refunded:
+                refund_status = "A full refund has been issued to your original payment method."
+            elif should_refund:
+                refund_status = "Your refund is being processed and will follow shortly."
+            elif was_paid:
+                refund_status = (
+                    "This lesson was cancelled less than "
+                    f"{CANCELLATION_NOTICE_HOURS} hours before the start, so it is not refunded."
+                )
             else:
-                reason = "Admin-initiated cancellation"
-
-            refund_status = (
-                "A full refund will be issued to your original payment method."
-                if should_refund
-                else "No refund is applicable for this cancellation."
-            )
-
-            await send_email(
+                refund_status = "No payment was taken for this booking."
+            send_email_later(
                 to=student.email,
                 template_name="cancellation",
                 context={
                     "first_name": student.first_name,
-                    "cancellation_reason": reason,
+                    "cancellation_reason": (
+                        "Cancelled by the tutor" if is_admin and actor.id != booking.student_id
+                        else "Cancelled by you"
+                    ),
                     "refund_status": refund_status,
                     "frontend_url": settings.frontend_url,
                 },
@@ -320,7 +385,7 @@ async def cancel_booking(
             extra={"booking_id": str(booking_id)},
         )
 
-    return should_refund
+    return refunded
 
 
 async def get_booking(
@@ -370,8 +435,12 @@ async def list_bookings(
     Students see their own bookings. Admins see all bookings.
     Results are sorted by slot start_at DESC.
     """
-    query = select(Booking, AvailabilitySlot).join(
-        AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id
+    from app.models.review import Review
+
+    query = (
+        select(Booking, AvailabilitySlot, Review.id)
+        .join(AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id)
+        .outerjoin(Review, Review.booking_id == Booking.id)
     )
 
     if user.role != "admin":
@@ -381,7 +450,10 @@ async def list_bookings(
 
     result = await db.execute(query)
     rows = result.all()
-    return [_booking_to_response(booking, slot) for booking, slot in rows]
+    return [
+        _booking_to_response(booking, slot, has_review=review_id is not None)
+        for booking, slot, review_id in rows
+    ]
 
 
 async def expire_pending_bookings(db: AsyncSession) -> int:
@@ -431,3 +503,29 @@ async def expire_pending_bookings(db: AsyncSession) -> int:
         await db.flush()
 
     return count
+
+
+async def complete_finished_bookings(db: AsyncSession) -> int:
+    """Mark confirmed bookings whose lesson has ended as 'completed'.
+
+    Completed bookings are what students can review. Returns the number of
+    bookings updated.
+    """
+    now = datetime.now(tz=timezone.utc)
+    result = await db.execute(
+        select(Booking)
+        .join(AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id)
+        .where(
+            and_(
+                Booking.status == "confirmed",
+                AvailabilitySlot.end_at < now,
+            )
+        )
+    )
+    finished = result.scalars().all()
+    for booking in finished:
+        booking.status = "completed"
+    if finished:
+        await db.flush()
+        logger.info("Marked bookings completed", extra={"count": len(finished)})
+    return len(finished)
