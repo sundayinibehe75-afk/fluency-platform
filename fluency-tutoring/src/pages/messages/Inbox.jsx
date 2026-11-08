@@ -6,6 +6,8 @@ import { formatDate } from '../../utils/dateUtils'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 
+const TUTOR_ID = import.meta.env.VITE_TUTOR_ID || '00000000-0000-0000-0000-000000000001'
+
 export default function Inbox() {
   const { user } = useAuth()
   const api = useApi()
@@ -34,7 +36,30 @@ export default function Inbox() {
     try {
       setThreadsLoading(true)
       const response = await api.get('/messages/threads')
-      setThreads(response.data)
+      let list = response.data
+      // Students who have never messaged the tutor get a ready-made thread,
+      // otherwise there would be no way to start the first conversation.
+      if (user.role === 'student') {
+        try {
+          const tutorRes = await api.get(`/tutors/${TUTOR_ID}`)
+          const tutor = tutorRes.data
+          if (!list.some((t) => t.other_user_id === tutor.user_id)) {
+            list = [
+              {
+                other_user_id: tutor.user_id,
+                other_user_name: tutor.display_name,
+                last_message_preview: 'Start a conversation with your tutor',
+                last_message_at: null,
+                unread_count: 0,
+              },
+              ...list,
+            ]
+          }
+        } catch (tutorErr) {
+          console.error('Failed to load tutor for messaging:', tutorErr)
+        }
+      }
+      setThreads(list)
     } catch (err) {
       console.error('Failed to fetch threads:', err)
       setError('Failed to load message threads.')
@@ -151,6 +176,7 @@ export default function Inbox() {
   }
 
   function formatThreadTime(isoString) {
+    if (!isoString) return ''
     const date = new Date(isoString)
     const now = new Date()
     const diffMs = now - date

@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password, verify_password
@@ -52,7 +52,8 @@ async def register_student(db: AsyncSession, data: RegisterRequest) -> TokenResp
     Returns a JWT on success.
     """
     # Check email uniqueness
-    result = await db.execute(select(User).where(User.email == data.email))
+    email = data.email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     existing = result.scalar_one_or_none()
     if existing is not None:
         raise HTTPException(
@@ -61,7 +62,7 @@ async def register_student(db: AsyncSession, data: RegisterRequest) -> TokenResp
         )
 
     user = User(
-        email=data.email,
+        email=email,
         password_hash=hash_password(data.password),
         first_name=data.first_name,
         last_name=data.last_name,
@@ -71,12 +72,12 @@ async def register_student(db: AsyncSession, data: RegisterRequest) -> TokenResp
     db.add(user)
     await db.flush()  # populate user.id before creating token
 
-    # Send welcome email (fire-and-forget)
+    # Send welcome email in the background (never blocks or fails sign-up)
     try:
-        from app.services.notification_service import send_email
         from app.core.config import settings
+        from app.services.notification_service import send_email_later
 
-        await send_email(
+        send_email_later(
             to=user.email,
             template_name="welcome",
             context={
@@ -100,7 +101,9 @@ async def login(db: AsyncSession, data: LoginRequest) -> TokenResponse:
     Uses a generic error for both "not found" and "wrong password" to avoid
     leaking whether an email exists (Requirements 1.6, 1.7).
     """
-    result = await db.execute(select(User).where(User.email == data.email))
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == data.email.strip().lower())
+    )
     user: User | None = result.scalar_one_or_none()
 
     if user is None or not verify_password(data.password, user.password_hash):
@@ -135,7 +138,9 @@ async def request_password_reset(
     If the email is not found we silently succeed to avoid user enumeration.
     The email is sent fire-and-forget (errors are logged, not raised).
     """
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == email.strip().lower())
+    )
     user: User | None = result.scalar_one_or_none()
 
     if user is None:
@@ -155,23 +160,30 @@ async def request_password_reset(
     db.add(reset_token)
     await db.flush()
 
-    # Fire-and-forget email notification
-    if notification_service is not None:
-        try:
+    # Send the reset email in the background. The router never passed an
+    # email sender before, so reset emails were silently never sent.
+    from app.core.config import settings
+
+    context = {
+        "first_name": user.first_name,
+        "reset_token": raw_token,
+        "expires_minutes": 60,
+        "frontend_url": settings.frontend_url,
+    }
+    try:
+        if notification_service is not None:
             await notification_service.send_email(
-                to=user.email,
-                template_name="password_reset",
-                context={
-                    "first_name": user.first_name,
-                    "reset_token": raw_token,
-                    "expires_minutes": 60,
-                },
+                to=user.email, template_name="password_reset", context=context
             )
-        except Exception:
-            logger.exception(
-                "Failed to send password reset email",
-                extra={"user_id": str(user.id)},
-            )
+        else:
+            from app.services.notification_service import send_email_later
+
+            send_email_later(to=user.email, template_name="password_reset", context=context)
+    except Exception:
+        logger.exception(
+            "Failed to send password reset email",
+            extra={"user_id": str(user.id)},
+        )
 
 
 async def confirm_password_reset(

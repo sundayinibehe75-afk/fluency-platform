@@ -23,7 +23,7 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 @router.get("/threads", response_model=List[ThreadResponse])
 async def list_threads(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("student", "tutor")),
+    current_user: User = Depends(require_role("student", "tutor", "admin")),
 ) -> List[ThreadResponse]:
     """List all message threads for the current user."""
     return await messaging_service.list_threads(db=db, user_id=current_user.id)
@@ -34,7 +34,7 @@ async def get_thread(
     user_id: uuid.UUID,
     page: int = Query(1, ge=1),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("student", "tutor")),
+    current_user: User = Depends(require_role("student", "tutor", "admin")),
 ) -> List[MessageResponse]:
     """Get paginated messages in a thread with another user."""
     return await messaging_service.get_thread(
@@ -49,7 +49,7 @@ async def get_thread(
 async def send_message(
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("student", "tutor")),
+    current_user: User = Depends(require_role("student", "tutor", "admin")),
 ) -> MessageResponse:
     """Send a message to another user."""
     return await messaging_service.send_message(
@@ -64,7 +64,7 @@ async def send_message(
 async def mark_read(
     message_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("student", "tutor")),
+    current_user: User = Depends(require_role("student", "tutor", "admin")),
 ) -> MessageResponse:
     """Mark a message as read (only the recipient can do this)."""
     return await messaging_service.mark_read(

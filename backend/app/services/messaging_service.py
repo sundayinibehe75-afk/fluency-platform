@@ -186,8 +186,8 @@ async def send_message(
 
     Validations:
     - body must be <= 5000 characters
-    - If sender is a student, recipient must have role="tutor"
-    - If sender is a tutor, recipient must have role="student"
+    - If sender is a student, recipient must be the tutor (role tutor or admin)
+    - If sender is the tutor (tutor or admin), recipient must be a student
     Raises 403 if validation fails.
 
     After storing, logs that a delayed email notification should be scheduled.
@@ -219,15 +219,16 @@ async def send_message(
             detail={"error": "NOT_FOUND", "detail": "Recipient not found."},
         )
 
-    # Role-based validation for v1 (single tutor):
-    # Students can only message tutors; tutors can only message students
-    if sender.role == "student" and recipient.role != "tutor":
+    # Role-based validation for v1 (single tutor). The tutor's account has the
+    # "admin" role (created by seed.py), so admin counts as the tutor here.
+    tutor_roles = {"tutor", "admin"}
+    if sender.role == "student" and recipient.role not in tutor_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "FORBIDDEN", "detail": "Students can only message the tutor."},
         )
 
-    if sender.role == "tutor" and recipient.role != "student":
+    if sender.role in tutor_roles and recipient.role != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "FORBIDDEN", "detail": "Tutors can only message students."},
