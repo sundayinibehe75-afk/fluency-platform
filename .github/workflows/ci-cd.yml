@@ -68,13 +68,14 @@ jobs:
             ${{ env.API_IMAGE }}:latest
 
       - name: Scan API image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          version: v0.76.1          # pin the Trivy scanner version
-          image-ref: ${{ env.API_IMAGE }}:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true      # only fail on problems that have a fix
-          exit-code: "1"            # a finding stops the pipeline
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.1 image \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 1 \
+            --no-progress \
+            ${{ env.API_IMAGE }}:${{ github.sha }}
 
       - name: Build frontend image
         uses: docker/build-push-action@v6
@@ -86,13 +87,14 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:latest
 
       - name: Scan frontend image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          version: v0.76.1          # pin the Trivy scanner version
-          image-ref: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.1 image \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 1 \
+            --no-progress \
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
 
       - name: Push images (only reached if both scans passed)
         run: |
