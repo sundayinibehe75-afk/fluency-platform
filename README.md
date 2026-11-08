@@ -13,12 +13,14 @@ I built and deployed this platform myself on AWS EC2, and I use it as the base f
 - **Accounts and authentication:** registration, login and logout with JWT, password reset by email, and a token denylist so logged-out tokens can't be reused
 - **Rate limiting** on authentication endpoints
 - **Tutor profiles** and **availability slots** that tutors create, edit and remove
-- **Bookings:** students book a free slot and can cancel
+- **Bookings:** students book a free slot; the slot is held for 15 minutes while they pay
+- **Cancellation policy:** students can cancel up to 12 hours before a lesson for a full refund; with less notice the lesson counts as used. Cancellations by the tutor are always refunded
 - **Payments with Stripe Checkout**, confirmed through a Stripe webhook
 - **Video lessons:** a Daily.co video room is created automatically for each confirmed booking
 - **Messaging** between students and tutors, with read status
 - **Reviews**, with admins able to hide or unhide a review
-- **Email notifications** through Resend, including a lesson reminder 24 hours before each lesson
+- **Email notifications** through Resend (sent in the background, so pages never wait for email), including a lesson reminder 24 hours before each lesson
+- **Background jobs** inside the API: release unpaid reservations after 15 minutes, mark finished lessons as completed (so students can review them), and send lesson reminders
 
 ---
 
@@ -122,6 +124,15 @@ docker compose up -d --build
 
 The proxy expects TLS certificates in `proxy/certs/`. For local testing, a self-signed certificate is enough.
 
+### First-time setup: admin account and slots
+
+Sign-up only creates student accounts. The tutor uses an **admin** account, created once from the server. The login comes from environment variables, never from the code:
+
+```bash
+docker compose exec -e ADMIN_EMAIL=you@example.com -e ADMIN_PASSWORD='a-long-password' api python seed.py
+docker compose exec api python add_slots.py   # optional: sample slots for the next 7 days
+```
+
 ### Configuration
 
 All settings come from environment variables. See `.env.example` for descriptions.
@@ -136,6 +147,7 @@ All settings come from environment variables. See `.env.example` for description
 | `DAILY_API_KEY` | Video rooms |
 | `FRONTEND_URL` | Public URL, used for CORS and email links |
 | `ENVIRONMENT` | `development`, `staging` or `production` |
+| `EMAIL_FROM` | Optional sender, default `Fluency German <noreply@fluencygerman.com>` (domain must be verified in Resend) |
 
 Secrets are never committed. The `.env` file is created on each machine from `.env.example`.
 
@@ -149,7 +161,13 @@ pip install -r requirements.txt
 python -m pytest -q tests
 ```
 
-The suite covers availability, messaging, notifications, reviews, video rooms and security properties, including property-based tests with Hypothesis. The tests run without a database.
+Unit tests cover availability, messaging, notifications, reviews, video rooms and security properties (including property-based tests with Hypothesis) and need no database.
+
+Integration tests (`tests/test_booking_flow.py`) cover the booking, payment, cancellation and refund rules against a real PostgreSQL database built from the Alembic migrations. They run when `TEST_DATABASE_URL` is set and are skipped otherwise; the CI pipeline provides a PostgreSQL service for them:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fluency_test python -m pytest -q tests
+```
 
 ---
 
@@ -157,7 +175,7 @@ The suite covers availability, messaging, notifications, reviews, video rooms an
 
 Every push to `main` runs the GitHub Actions pipeline in `.github/workflows/ci-cd.yml`:
 
-1. **Test:** backend tests (pytest) and frontend build run in parallel.
+1. **Test:** backend unit and integration tests (pytest, with a PostgreSQL service) and the frontend build run in parallel.
 2. **Build:** Docker images for the API and frontend are built and tagged with the commit SHA and `latest`.
 3. **Scan:** each image is scanned with **Trivy**; any fixable HIGH or CRITICAL vulnerability stops the pipeline.
 4. **Push:** images that pass the scan are pushed to GitHub Container Registry.
