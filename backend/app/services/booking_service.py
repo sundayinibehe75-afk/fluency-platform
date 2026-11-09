@@ -3,7 +3,8 @@
 Functions:
 - create_booking — initiate a booking for a student on a slot
 - confirm_booking — transition booking to confirmed, mark slot as booked
-- cancel_booking — cancel a booking, optionally flag for refund
+- cancel_booking — cancel a booking; refund or return the credit with 12h+ notice
+- reschedule_booking — move a confirmed booking to another slot (12h+ notice)
 - get_booking — fetch a single booking with ownership enforcement
 - list_bookings — list bookings for a student or all (admin)
 - expire_pending_bookings — background task to release expired reservations
@@ -29,6 +30,7 @@ from app.schemas.bookings import BookingResponse
 logger = logging.getLogger(__name__)
 
 RESERVATION_MINUTES = 15
+DEFAULT_SINGLE_PRICE_CENTS = 1000  # $10, used only if the price row is missing
 # Students may cancel (with refund) or reschedule only this many hours before
 # the lesson starts. With less notice the lesson counts as used.
 CANCELLATION_NOTICE_HOURS = 12
@@ -57,6 +59,8 @@ def _booking_to_response(
         "created_at": booking.created_at,
         "updated_at": booking.updated_at,
         "has_review": has_review,
+        "booking_type": booking.booking_type or "single",
+        "late_cancellation": bool(booking.late_cancellation),
     }
     return BookingResponse.model_validate(data)
 
@@ -65,14 +69,24 @@ async def create_booking(
     db: AsyncSession,
     student_id: uuid.UUID,
     slot_id: uuid.UUID,
+    booking_type: str = "single",
 ) -> BookingResponse:
     """Create a new booking for the given student and slot.
 
-    - Verifies the slot exists and is available
-    - Prevents duplicate bookings (409 BOOKING_CONFLICT)
-    - Looks up price from price_configs (product_key = "single_session")
-    - Sets status to pending_payment with a 15-minute reservation window
+    booking_type:
+    - "single": paid per lesson. Status pending_payment with a 15-minute
+      reservation while the student pays through Stripe.
+    - "plan":   uses one credit from the student's monthly plan (or credits
+      added by the tutor). Confirmed immediately.
+    - "trial":  the student's one free trial lesson. Confirmed immediately.
+
+    Prevents booking unavailable, past or already-booked slots (409).
     """
+    if booking_type not in ("single", "plan", "trial"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "Unknown booking type."},
+        )
     # Fetch the slot
     result = await db.execute(
         select(AvailabilitySlot).where(AvailabilitySlot.id == slot_id)
@@ -132,33 +146,62 @@ async def create_booking(
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
         )
 
-    # Look up price from price_configs
-    price_result = await db.execute(
-        select(PriceConfig).where(PriceConfig.product_key == "single_session")
-    )
-    price_config = price_result.scalar_one_or_none()
-
-    if price_config is None:
-        # Fallback: use a default price if config is missing
-        price_cents = 5000  # $50.00 default
-        currency = "USD"
-    else:
-        price_cents = price_config.price_cents
-        currency = price_config.currency
-
     now = datetime.now(tz=timezone.utc)
-    reserved_until = now + timedelta(minutes=RESERVATION_MINUTES)
+    grant = None
+
+    if booking_type == "single":
+        price_result = await db.execute(
+            select(PriceConfig).where(PriceConfig.product_key == "single_session")
+        )
+        price_config = price_result.scalar_one_or_none()
+        if price_config is None:
+            logger.warning("single_session price missing; using the default $10")
+            price_cents, currency = DEFAULT_SINGLE_PRICE_CENTS, "USD"
+        else:
+            price_cents = price_config.price_cents
+            currency = price_config.currency
+        booking_status = "pending_payment"
+        reserved_until = now + timedelta(minutes=RESERVATION_MINUTES)
+    else:
+        from app.services import credit_service
+
+        if booking_type == "trial":
+            if not await credit_service.trial_available(db, student_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "TRIAL_USED", "detail": "You have already used your free trial lesson."},
+                )
+        else:
+            grant = await credit_service.find_usable_grant(db, student_id, slot.start_at)
+            if grant is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "NO_CREDITS",
+                        "detail": "You have no lesson credits valid for this date. "
+                                  "Choose a plan or book a single lesson.",
+                    },
+                )
+            grant.used += 1
+        price_cents = 0
+        currency = "USD"
+        booking_status = "confirmed"
+        reserved_until = None
 
     booking = Booking(
         student_id=student_id,
         tutor_id=slot.tutor_id,
         slot_id=slot_id,
-        status="pending_payment",
+        status=booking_status,
+        booking_type=booking_type,
+        credit_grant_id=grant.id if grant is not None else None,
         price_cents=price_cents,
         currency=currency,
         reserved_until=reserved_until,
     )
     db.add(booking)
+    if booking_status == "confirmed":
+        slot.status = "booked"
     try:
         await db.flush()
     except IntegrityError:
@@ -168,6 +211,10 @@ async def create_booking(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
         )
+
+    if booking_status == "confirmed":
+        # Free trial and plan lessons need no payment: email + video room now
+        await notify_booking_confirmed(db, booking.id)
 
     return _booking_to_response(booking, slot)
 
@@ -259,7 +306,7 @@ async def cancel_booking(
     db: AsyncSession,
     booking_id: uuid.UUID,
     actor: User,
-) -> bool:
+) -> dict:
     """Cancel a booking and release its slot.
 
     Rules:
@@ -269,9 +316,12 @@ async def cancel_booking(
     - A paid (confirmed) booking is refunded when the admin cancels it, or when
       the student cancels at least CANCELLATION_NOTICE_HOURS before the start.
       With less notice the lesson counts as used and is not refunded.
+    - Plan lessons get their credit back on the same terms (12h+ notice, or
+      cancelled by the admin). With less notice the credit is used up.
+    - A free trial cancelled with less notice counts as used.
 
     Returns:
-        True if a refund was issued, False otherwise.
+        {"refund_issued": bool, "credit_returned": bool}
     """
     result = await db.execute(
         select(Booking).where(Booking.id == booking_id)
@@ -312,12 +362,24 @@ async def cancel_booking(
             detail={"error": "VALIDATION_ERROR", "detail": "This lesson has already started."},
         )
 
-    was_paid = booking.status == "confirmed"
+    booking_type = booking.booking_type or "single"
+    was_confirmed = booking.status == "confirmed"
+    was_paid = was_confirmed and booking_type == "single"
     enough_notice = (
         slot is not None
         and slot.start_at - now >= timedelta(hours=CANCELLATION_NOTICE_HOURS)
     )
-    should_refund = was_paid and (is_admin or enough_notice)
+    in_time = is_admin or enough_notice
+    should_refund = was_paid and in_time
+
+    credit_returned = False
+    if was_confirmed and not in_time:
+        # Late cancellation: the lesson (or credit, or trial) counts as used
+        booking.late_cancellation = True
+    elif booking_type == "plan" and was_confirmed:
+        from app.services.credit_service import return_credit
+
+        credit_returned = await return_credit(db, booking.credit_grant_id)
 
     booking.status = "cancelled"
     booking.reserved_until = None
@@ -344,6 +406,7 @@ async def cancel_booking(
             "actor_id": str(actor.id),
             "student_id": str(booking.student_id),
             "refund_issued": refunded,
+            "credit_returned": credit_returned,
         },
     )
 
@@ -355,7 +418,21 @@ async def cancel_booking(
         student_result = await db.execute(select(User).where(User.id == booking.student_id))
         student = student_result.scalar_one_or_none()
         if student is not None:
-            if refunded:
+            if booking_type == "plan":
+                refund_status = (
+                    "Your lesson credit has been returned to your plan."
+                    if credit_returned
+                    else "This lesson was cancelled less than "
+                    f"{CANCELLATION_NOTICE_HOURS} hours before the start, so the credit is used."
+                )
+            elif booking_type == "trial":
+                refund_status = (
+                    "You can book your free trial again."
+                    if in_time
+                    else "This free trial was cancelled less than "
+                    f"{CANCELLATION_NOTICE_HOURS} hours before the start, so it counts as used."
+                )
+            elif refunded:
                 refund_status = "A full refund has been issued to your original payment method."
             elif should_refund:
                 refund_status = "Your refund is being processed and will follow shortly."
@@ -385,7 +462,144 @@ async def cancel_booking(
             extra={"booking_id": str(booking_id)},
         )
 
-    return refunded
+    return {"refund_issued": refunded, "credit_returned": credit_returned}
+
+
+async def reschedule_booking(
+    db: AsyncSession,
+    booking_id: uuid.UUID,
+    new_slot_id: uuid.UUID,
+    actor: User,
+) -> BookingResponse:
+    """Move a confirmed booking to another available slot.
+
+    Rules:
+    - Students can only move their own bookings; admins can move any.
+    - Only confirmed bookings can be moved.
+    - Students must reschedule at least CANCELLATION_NOTICE_HOURS before the
+      current lesson starts. With less notice it is no longer possible.
+    - The new slot must be available and in the future.
+    - A plan lesson's credit must still be valid on the new date; if not,
+      another valid grant is used, otherwise the move is refused.
+    """
+    result = await db.execute(select(Booking).where(Booking.id == booking_id).with_for_update())
+    booking = result.scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "NOT_FOUND", "detail": "Booking not found."},
+        )
+
+    is_admin = actor.role == "admin"
+    if not is_admin and booking.student_id != actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "FORBIDDEN", "detail": "You do not have access to this booking."},
+        )
+
+    if booking.status != "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "Only confirmed lessons can be rescheduled."},
+        )
+
+    old_slot = (
+        await db.execute(select(AvailabilitySlot).where(AvailabilitySlot.id == booking.slot_id))
+    ).scalar_one_or_none()
+    now = datetime.now(tz=timezone.utc)
+    if (
+        not is_admin
+        and old_slot is not None
+        and old_slot.start_at - now < timedelta(hours=CANCELLATION_NOTICE_HOURS)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "TOO_LATE",
+                "detail": f"Lessons can only be rescheduled at least {CANCELLATION_NOTICE_HOURS} "
+                          "hours before they start.",
+            },
+        )
+
+    if new_slot_id == booking.slot_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "Choose a different time."},
+        )
+
+    new_slot = (
+        await db.execute(
+            select(AvailabilitySlot).where(AvailabilitySlot.id == new_slot_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if new_slot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "NOT_FOUND", "detail": "Slot not found."},
+        )
+    if new_slot.status != "available" or new_slot.start_at <= now:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
+        )
+    taken = (
+        await db.execute(
+            select(Booking.id).where(
+                Booking.slot_id == new_slot_id, Booking.status.in_(ACTIVE_STATUSES)
+            )
+        )
+    ).first()
+    if taken is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
+        )
+
+    # Plan lessons: the credit must still be valid on the new date
+    if booking.booking_type == "plan" and booking.credit_grant_id is not None:
+        from app.models.credit_grant import CreditGrant
+        from app.services import credit_service
+
+        grant = (
+            await db.execute(select(CreditGrant).where(CreditGrant.id == booking.credit_grant_id))
+        ).scalar_one_or_none()
+        if grant is None or grant.expires_at <= new_slot.start_at:
+            other = await credit_service.find_usable_grant(db, booking.student_id, new_slot.start_at)
+            if other is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "CREDIT_EXPIRES",
+                        "detail": "Your lesson credit expires before that date. "
+                                  "Please choose an earlier time.",
+                    },
+                )
+            other.used += 1
+            if grant is not None and grant.used > 0:
+                grant.used -= 1
+            booking.credit_grant_id = other.id
+
+    if old_slot is not None and old_slot.status == "booked":
+        old_slot.status = "available"
+    booking.slot_id = new_slot.id
+    booking.video_room_url = None
+    new_slot.status = "booked"
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
+        )
+
+    logger.info(
+        "Booking rescheduled",
+        extra={"booking_id": str(booking.id), "actor_id": str(actor.id), "new_slot_id": str(new_slot.id)},
+    )
+    # New confirmation email with the new time, and a new video room
+    await notify_booking_confirmed(db, booking.id)
+    await db.refresh(booking)
+    return _booking_to_response(booking, new_slot)
 
 
 async def get_booking(
@@ -438,8 +652,9 @@ async def list_bookings(
     from app.models.review import Review
 
     query = (
-        select(Booking, AvailabilitySlot, Review.id)
+        select(Booking, AvailabilitySlot, Review.id, User.first_name, User.last_name)
         .join(AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id)
+        .join(User, Booking.student_id == User.id)
         .outerjoin(Review, Review.booking_id == Booking.id)
     )
 
@@ -450,10 +665,12 @@ async def list_bookings(
 
     result = await db.execute(query)
     rows = result.all()
-    return [
-        _booking_to_response(booking, slot, has_review=review_id is not None)
-        for booking, slot, review_id in rows
-    ]
+    responses = []
+    for booking, slot, review_id, first_name, last_name in rows:
+        response = _booking_to_response(booking, slot, has_review=review_id is not None)
+        response.student_name = f"{first_name} {last_name}".strip()
+        responses.append(response)
+    return responses
 
 
 async def expire_pending_bookings(db: AsyncSession) -> int:

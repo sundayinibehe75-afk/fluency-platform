@@ -19,23 +19,24 @@ function decodeJwtPayload(token) {
   }
 }
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(null)
+function validStoredToken() {
+  try {
+    const stored = localStorage.getItem('token')
+    if (!stored) return null
+    const decoded = decodeJwtPayload(stored)
+    if (decoded && decoded.exp && decoded.exp * 1000 > Date.now()) return stored
+    localStorage.removeItem('token') // invalid or expired
+  } catch {
+    // storage unavailable
+  }
+  return null
+}
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token')
-    if (storedToken) {
-      const decoded = decodeJwtPayload(storedToken)
-      if (decoded && decoded.exp && decoded.exp * 1000 > Date.now()) {
-        setToken(storedToken)
-        setUser(decoded)
-      } else {
-        // Token is invalid or expired — clear it
-        localStorage.removeItem('token')
-      }
-    }
-  }, [])
+export function AuthProvider({ children }) {
+  // Read the saved login synchronously, so pages that need a user don't
+  // redirect away on the first render after a page refresh.
+  const [token, setToken] = useState(() => validStoredToken())
+  const [user, setUser] = useState(() => (token ? decodeJwtPayload(token) : null))
 
   const login = useCallback((newToken) => {
     localStorage.setItem('token', newToken)

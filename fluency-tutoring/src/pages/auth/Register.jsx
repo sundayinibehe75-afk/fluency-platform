@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
+import { nextPath } from '../../utils/nextPath'
 
 export default function Register() {
   const [firstName, setFirstName] = useState('')
@@ -21,7 +22,7 @@ export default function Register() {
 
   // If already logged in, redirect away
   if (user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} replace />
+    return <Navigate to={user.role === 'admin' ? '/admin' : nextPath('/dashboard')} replace />
   }
 
   async function handleSubmit(e) {
@@ -38,7 +39,7 @@ export default function Register() {
         cefr_level: cefrLevel || null,
       })
       login(res.data.access_token)
-      navigate('/dashboard')
+      navigate(nextPath('/dashboard'))
     } catch (err) {
       if (err.response && err.response.data) {
         setError(getErrorMessage(err, 'Registration failed. Please try again.'))
@@ -116,7 +117,7 @@ export default function Register() {
             )}
           </form>
           <p style={{ marginTop: '1.5rem', color: '#666', fontSize: '0.95rem' }}>
-            Already have an account? <Link to="/login" style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Log in</Link>
+            Already have an account? <Link to={`/login${window.location.search}`} style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Log in</Link>
           </p>
         </div>
       </section>

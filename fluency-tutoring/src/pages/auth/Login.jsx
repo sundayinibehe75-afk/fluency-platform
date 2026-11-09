@@ -4,6 +4,7 @@ import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { nextPath } from '../../utils/nextPath'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -16,7 +17,7 @@ export default function Login() {
 
   // If already logged in, redirect away
   if (user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} replace />
+    return <Navigate to={user.role === 'admin' ? '/admin' : nextPath('/dashboard')} replace />
   }
 
   async function handleSubmit(e) {
@@ -76,7 +77,7 @@ export default function Login() {
             )}
           </form>
           <p style={{ marginTop: '1.5rem', color: '#666', fontSize: '0.95rem' }}>
-            Don't have an account? <Link to="/register" style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Register</Link>
+            Don't have an account? <Link to={`/register${window.location.search}`} style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Register</Link>
           </p>
           <p style={{ marginTop: '0.75rem', color: '#666', fontSize: '0.95rem' }}>
             <Link to="/reset-password" style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Forgot your password?</Link>

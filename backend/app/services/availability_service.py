@@ -260,3 +260,81 @@ async def delete_slot(
     else:
         await db.delete(slot)
     await db.flush()
+
+
+async def list_all_slots(db: AsyncSession, tutor_id: uuid.UUID) -> List[SlotResponse]:
+    """Admin view: all future slots (available, booked and blocked)."""
+    now = datetime.now(tz=timezone.utc)
+    result = await db.execute(
+        select(AvailabilitySlot)
+        .where(
+            and_(
+                AvailabilitySlot.tutor_id == tutor_id,
+                AvailabilitySlot.end_at > now,
+                AvailabilitySlot.status != "removed",
+            )
+        )
+        .order_by(AvailabilitySlot.start_at.asc())
+    )
+    return [SlotResponse.model_validate(s) for s in result.scalars()]
+
+
+def _check_range(start_at: datetime, end_at: datetime) -> None:
+    if end_at <= start_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "The end must be after the start."},
+        )
+
+
+async def block_time(
+    db: AsyncSession, tutor_id: uuid.UUID, start_at: datetime, end_at: datetime
+) -> dict:
+    """Time off: hide every free slot that starts in the range.
+
+    Booked lessons in the range are left alone and counted, so the tutor can
+    reschedule or cancel them (cancelling as admin always refunds or returns
+    the credit).
+    """
+    _check_range(start_at, end_at)
+    in_range = and_(
+        AvailabilitySlot.tutor_id == tutor_id,
+        AvailabilitySlot.start_at >= start_at,
+        AvailabilitySlot.start_at < end_at,
+    )
+    free = await db.execute(
+        select(AvailabilitySlot).where(and_(in_range, AvailabilitySlot.status == "available"))
+    )
+    changed = 0
+    for slot in free.scalars():
+        slot.status = "blocked"
+        changed += 1
+    booked = await db.execute(
+        select(AvailabilitySlot.id).where(and_(in_range, AvailabilitySlot.status == "booked"))
+    )
+    await db.flush()
+    logger.info("Time off blocked", extra={"tutor_id": str(tutor_id), "slots": changed})
+    return {"changed": changed, "booked_lessons_in_range": len(booked.all())}
+
+
+async def unblock_time(
+    db: AsyncSession, tutor_id: uuid.UUID, start_at: datetime, end_at: datetime
+) -> dict:
+    """Make blocked slots in the range bookable again."""
+    _check_range(start_at, end_at)
+    result = await db.execute(
+        select(AvailabilitySlot).where(
+            and_(
+                AvailabilitySlot.tutor_id == tutor_id,
+                AvailabilitySlot.start_at >= start_at,
+                AvailabilitySlot.start_at < end_at,
+                AvailabilitySlot.status == "blocked",
+            )
+        )
+    )
+    changed = 0
+    for slot in result.scalars():
+        slot.status = "available"
+        changed += 1
+    await db.flush()
+    return {"changed": changed, "booked_lessons_in_range": 0}

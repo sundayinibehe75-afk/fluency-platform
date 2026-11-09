@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Fragment, useState, useEffect } from 'react'
+import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useApi } from '../../hooks/useApi'
 import { formatDate } from '../../utils/dateUtils'
 import { formatCents } from '../../utils/formatCurrency'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
+import { getErrorMessage } from '../../utils/errors'
+import { LessonTypeBadge } from './StudentDashboard'
 
-const TABS = ['Overview', 'Bookings', 'Students', 'Availability', 'Tutor Profile', 'Reviews']
+const TUTOR_ID = import.meta.env.VITE_TUTOR_ID || '00000000-0000-0000-0000-000000000001'
+
+const TABS = ['Overview', 'Bookings', 'Students', 'Availability', 'Time Off', 'Tutor Profile', 'Reviews']
 
 function OverviewTab() {
   return (
@@ -61,7 +65,12 @@ function BookingsTab() {
   }
 
   async function handleCancel(bookingId) {
-    if (!window.confirm('Are you sure you want to cancel this booking?')) return
+    if (
+      !window.confirm(
+        'Cancel this booking? The student gets a full refund, or the lesson back if it was a plan lesson.'
+      )
+    )
+      return
     try {
       setCancellingId(bookingId)
       await api.post(`/bookings/${bookingId}/cancel`)
@@ -70,7 +79,7 @@ function BookingsTab() {
       )
     } catch (err) {
       console.error('Failed to cancel booking:', err)
-      alert('Failed to cancel booking. Please try again.')
+      alert(getErrorMessage(err, 'Failed to cancel booking. Please try again.'))
     } finally {
       setCancellingId(null)
     }
@@ -91,6 +100,7 @@ function BookingsTab() {
           <tr>
             <th>Student</th>
             <th>Date/Time</th>
+            <th>Type</th>
             <th>Status</th>
             <th>Amount</th>
             <th>Actions</th>
@@ -101,13 +111,20 @@ function BookingsTab() {
             <tr key={booking.id}>
               <td>{booking.student_name || 'Student'}</td>
               <td>{formatDate(booking.start_at || booking.slot_start_at)}</td>
+              <td><LessonTypeBadge type={booking.booking_type} /></td>
               <td>
                 <span className={`admin-status admin-status--${booking.status}`}>
                   {booking.status}
                 </span>
+                {booking.late_cancellation && <small className="admin-late"> late</small>}
               </td>
               <td>{formatCents(booking.price_cents, booking.currency)}</td>
               <td>
+                {booking.status === 'confirmed' && new Date(booking.start_at) > new Date() && (
+                  <Link to={`/booking?reschedule=${booking.id}`} className="btn btn-outline-dark btn-sm">
+                    Move
+                  </Link>
+                )}{' '}
                 {booking.status === 'confirmed' && (
                   <button
                     onClick={() => handleCancel(booking.id)}
@@ -126,10 +143,263 @@ function BookingsTab() {
   )
 }
 
-function StudentsTab() {
+function inDays(days) {
+  const d = new Date(Date.now() + days * 864e5)
+  return d.toISOString().slice(0, 10)
+}
+
+function endOfDayIso(dateStr) {
+  // The chosen date, until 23:59 local time
+  return new Date(`${dateStr}T23:59:00`).toISOString()
+}
+
+function StudentCredits({ student, onChanged }) {
+  const api = useApi()
+  const [grants, setGrants] = useState([])
+  const [lessons, setLessons] = useState(1)
+  const [expires, setExpires] = useState(inDays(30))
+  const [note, setNote] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    load()
+  }, [student.id])
+
+  async function load() {
+    try {
+      const res = await api.get(`/admin/students/${student.id}/credits`)
+      setGrants(res.data)
+    } catch (err) {
+      setMessage(getErrorMessage(err, 'Could not load credits.'))
+    }
+  }
+
+  async function add(e) {
+    e.preventDefault()
+    setMessage('')
+    try {
+      await api.post(`/admin/students/${student.id}/credits`, {
+        lessons: Number(lessons),
+        expires_at: endOfDayIso(expires),
+        note: note || null,
+      })
+      setNote('')
+      setMessage(`Added ${lessons} lesson(s).`)
+      load()
+      onChanged()
+    } catch (err) {
+      setMessage(getErrorMessage(err, 'Could not add lessons.'))
+    }
+  }
+
+  async function extend(grant) {
+    const value = window.prompt('New expiry date (YYYY-MM-DD):', grant.expires_at.slice(0, 10))
+    if (!value) return
+    try {
+      await api.patch(`/admin/credits/${grant.id}`, { expires_at: endOfDayIso(value) })
+      load()
+      onChanged()
+    } catch (err) {
+      alert(getErrorMessage(err, 'Could not extend.'))
+    }
+  }
+
+  const now = new Date()
   return (
-    <div className="admin-placeholder">
-      <p>Student management coming soon</p>
+    <div className="admin-credits">
+      <form onSubmit={add} className="admin-credits-form">
+        <label>
+          Add lessons
+          <input type="number" min="1" max="100" value={lessons} onChange={(e) => setLessons(e.target.value)} required />
+        </label>
+        <label>
+          Use by
+          <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} required />
+        </label>
+        <label className="admin-credits-note">
+          Note (optional)
+          <input type="text" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="e.g. make-up lesson" />
+        </label>
+        <button type="submit" className="btn btn-primary btn-sm">Add</button>
+      </form>
+      {message && <p className="admin-form-message">{message}</p>}
+      {grants.length === 0 ? (
+        <p className="admin-muted">No lesson credits yet.</p>
+      ) : (
+        <table className="admin-table admin-table--compact">
+          <thead>
+            <tr><th>From</th><th>Used</th><th>Left</th><th>Expires</th><th>Note</th><th></th></tr>
+          </thead>
+          <tbody>
+            {grants.map((g) => {
+              const expired = new Date(g.expires_at) <= now
+              return (
+                <tr key={g.id} className={expired ? 'admin-row-muted' : ''}>
+                  <td>{g.source === 'subscription' ? 'Plan' : 'Added by you'}</td>
+                  <td>{g.used}/{g.total}</td>
+                  <td>{expired ? 0 : g.remaining}</td>
+                  <td>{formatDate(g.expires_at)}{expired && ' (expired)'}</td>
+                  <td>{g.note || ''}</td>
+                  <td>
+                    <button className="btn btn-outline-dark btn-sm" onClick={() => extend(g)}>
+                      Extend
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function StudentsTab() {
+  const api = useApi()
+  const [students, setStudents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [openId, setOpenId] = useState(null)
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function load() {
+    try {
+      const res = await api.get('/admin/students')
+      setStudents(res.data)
+    } catch (err) {
+      console.error('Failed to fetch students:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) return <p>Loading students...</p>
+  if (students.length === 0) return <p>No students yet.</p>
+
+  const q = filter.trim().toLowerCase()
+  const shown = students.filter(
+    (s) => !q || `${s.first_name} ${s.last_name} ${s.email}`.toLowerCase().includes(q)
+  )
+
+  return (
+    <div>
+      <input
+        className="admin-search"
+        type="search"
+        placeholder="Search students"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
+      <div className="admin-table-wrapper">
+        <table className="admin-table">
+          <thead>
+            <tr><th>Student</th><th>Plan</th><th>Lessons left</th><th>Free trial</th><th></th></tr>
+          </thead>
+          <tbody>
+            {shown.map((s) => (
+              <Fragment key={s.id}>
+                <tr>
+                  <td>
+                    {s.first_name} {s.last_name}
+                    <br /><small className="admin-muted">{s.email}</small>
+                  </td>
+                  <td>
+                    {s.plan ? s.plan.label : '—'}
+                    {s.plan?.cancel_at_period_end && <small className="admin-muted"> (ends {formatDate(s.plan.current_period_end)})</small>}
+                  </td>
+                  <td>
+                    {s.credits_remaining}
+                    {s.credits_remaining > 0 && s.credits_expire_at && (
+                      <small className="admin-muted"> · by {formatDate(s.credits_expire_at)}</small>
+                    )}
+                  </td>
+                  <td>{s.trial_available ? 'Not used' : 'Used'}</td>
+                  <td>
+                    <button className="btn btn-outline-dark btn-sm" onClick={() => setOpenId(openId === s.id ? null : s.id)}>
+                      {openId === s.id ? 'Close' : 'Lessons'}
+                    </button>
+                  </td>
+                </tr>
+                {openId === s.id && (
+                  <tr>
+                    <td colSpan={5}><StudentCredits student={s} onChanged={load} /></td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function TimeOffTab() {
+  const api = useApi()
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function range() {
+    // Whole days in your local time: from the start of "from" to the end of "to"
+    return {
+      tutor_id: TUTOR_ID,
+      start_at: new Date(`${from}T00:00:00`).toISOString(),
+      end_at: new Date(new Date(`${to}T00:00:00`).getTime() + 864e5).toISOString(),
+    }
+  }
+
+  async function submit(action) {
+    if (!from || !to) return setMessage('Choose both dates.')
+    if (to < from) return setMessage('The last day must be on or after the first day.')
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await api.post(`/availability/${action}`, range())
+      const { changed, booked_lessons_in_range: booked } = res.data
+      if (action === 'block') {
+        setMessage(
+          `Blocked ${changed} free slot(s).` +
+            (booked
+              ? ` ${booked} lesson(s) are already booked in these days. Move or cancel them in the Bookings tab.`
+              : '')
+        )
+      } else {
+        setMessage(`Reopened ${changed} slot(s).`)
+      }
+    } catch (err) {
+      setMessage(getErrorMessage(err, 'Something went wrong.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: '500px' }}>
+      <h3 style={{ marginBottom: '0.5rem' }}>Time off</h3>
+      <p className="admin-muted" style={{ marginBottom: '1.5rem' }}>
+        Students can't book free slots on these days. Booked lessons stay as they are.
+      </p>
+      <div className="admin-form-group">
+        <label htmlFor="off-from">First day off</label>
+        <input id="off-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      </div>
+      <div className="admin-form-group">
+        <label htmlFor="off-to">Last day off</label>
+        <input id="off-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      </div>
+      <button className="btn btn-primary" disabled={busy} onClick={() => submit('block')}>
+        Block these days
+      </button>{' '}
+      <button className="btn btn-outline-dark" disabled={busy} onClick={() => submit('unblock')}>
+        Reopen these days
+      </button>
+      {message && <p className="admin-form-message" style={{ marginTop: '1rem' }}>{message}</p>}
     </div>
   )
 }
@@ -146,7 +416,7 @@ function AvailabilityTab() {
   const [slots, setSlots] = useState([])
   const [slotsLoading, setSlotsLoading] = useState(true)
 
-  const tutorId = '00000000-0000-0000-0000-000000000001'
+  const tutorId = TUTOR_ID
 
   useEffect(() => {
     fetchSlots()
@@ -155,7 +425,7 @@ function AvailabilityTab() {
   async function fetchSlots() {
     try {
       setSlotsLoading(true)
-      const res = await api.get(`/availability?tutor_id=${tutorId}`)
+      const res = await api.get(`/availability/all?tutor_id=${tutorId}`)
       setSlots(res.data)
     } catch (err) {
       console.error('Failed to fetch slots:', err)
@@ -299,7 +569,7 @@ function AvailabilityTab() {
         {message && <p style={{ marginTop: '1rem', fontSize: '0.95rem' }}>{message}</p>}
       </form>
 
-      <h3 style={{ marginBottom: '1rem' }}>Current Availability ({slots.length} slots)</h3>
+      <h3 style={{ marginBottom: '1rem' }}>Upcoming slots ({slots.length})</h3>
       {slotsLoading ? (
         <p>Loading slots...</p>
       ) : slots.length === 0 ? (
@@ -308,7 +578,12 @@ function AvailabilityTab() {
         <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
           {slots.map(slot => (
             <div key={slot.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
-              <span>{formatDate(slot.start_at)} — {slot.duration_minutes} min</span>
+              <span>
+                {formatDate(slot.start_at)} — {slot.duration_minutes} min{' '}
+                {slot.status !== 'available' && (
+                  <span className={`admin-status admin-status--${slot.status}`}>{slot.status}</span>
+                )}
+              </span>
               <button onClick={() => handleDelete(slot.id)} className="btn btn-cancel btn-sm">Delete</button>
             </div>
           ))}
@@ -333,8 +608,7 @@ function TutorProfileTab() {
     years_experience: '',
   })
 
-  // Use tutor ID 1 as default; in production this would come from config
-  const tutorId = '1'
+  const tutorId = TUTOR_ID
 
   useEffect(() => {
     fetchProfile()
@@ -490,8 +764,7 @@ function ReviewsTab() {
   const [loading, setLoading] = useState(true)
   const [togglingId, setTogglingId] = useState(null)
 
-  // Use tutor ID 1 as default
-  const tutorId = '1'
+  const tutorId = TUTOR_ID
 
   useEffect(() => {
     fetchReviews()
@@ -592,6 +865,8 @@ export default function AdminDashboard() {
         return <StudentsTab />
       case 'Availability':
         return <AvailabilityTab />
+      case 'Time Off':
+        return <TimeOffTab />
       case 'Tutor Profile':
         return <TutorProfileTab />
       case 'Reviews':

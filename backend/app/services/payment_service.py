@@ -5,10 +5,9 @@ Functions:
 - handle_webhook — verify and process Stripe webhook events
 - initiate_refund — issue a refund via Stripe Refunds API
 
-Price configs seeding (price_configs table):
-- single_session: 4500 cents (USD)
-- monthly_package: 16000 cents (USD)
-- intensive_package: 28000 cents (USD)
+Prices live in the price_configs table (migration 0003): a single lesson is
+1000 cents (USD). Monthly plans are handled in subscription_service; their
+webhook events (invoice.paid, customer.subscription.*) are routed from here.
 """
 import json
 import logging
@@ -152,8 +151,18 @@ async def handle_webhook(
 
     event_type = event["type"]
 
-    if event_type == "checkout.session.completed":
+    obj = event["data"]["object"]
+    from app.services import subscription_service
+
+    if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
+        await subscription_service.handle_checkout_completed(obj, db)
+    elif event_type == "checkout.session.completed":
         await _handle_checkout_completed(event, stripe_event_id, db)
+    elif event_type == "invoice.paid":
+        await subscription_service.handle_invoice_paid(obj, db)
+    elif event_type in ("customer.subscription.updated", "customer.subscription.deleted",
+                        "customer.subscription.created"):
+        await subscription_service.handle_subscription_changed(obj, db)
     elif event_type == "charge.refund.updated":
         await _handle_refund_updated(event, stripe_event_id, db)
     else:

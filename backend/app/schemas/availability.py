@@ -54,3 +54,16 @@ class SlotUpdate(AppBaseModel):
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     duration_minutes: Optional[int] = Field(None, gt=0)
+
+
+class TimeOffRequest(AppBaseModel):
+    """Block or unblock every free slot that starts in [start_at, end_at)."""
+
+    tutor_id: uuid.UUID
+    start_at: datetime
+    end_at: datetime
+
+
+class TimeOffResult(AppBaseModel):
+    changed: int
+    booked_lessons_in_range: int = 0

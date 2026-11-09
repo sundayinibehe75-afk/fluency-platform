@@ -28,12 +28,14 @@ from app.core.logging import configure_logging
 
 # Routers (stubs for now; each will be fully implemented in its own task)
 from app.routers import (
+    admin,
     auth,
     availability,
     bookings,
     health,
     messages,
     payments,
+    plans,
     reviews,
     tutors,
     users,
@@ -185,6 +187,8 @@ def create_app() -> FastAPI:
     app.include_router(payments.router, prefix=API_PREFIX)
     app.include_router(messages.router, prefix=API_PREFIX)
     app.include_router(reviews.router, prefix=API_PREFIX)
+    app.include_router(plans.router, prefix=API_PREFIX)
+    app.include_router(admin.router, prefix=API_PREFIX)
 
     logger.info(
         "Fluency Platform API started",

@@ -371,7 +371,7 @@ async def test_paid_lesson_cancelled_with_enough_notice_is_refunded(db):
     student, booking = await _paid_booking(db, hours_from_now=48)
     with patch("app.services.payment_service.initiate_refund", new=AsyncMock(return_value=True)) as refund, \
          patch("app.services.notification_service.send_email_later"):
-        assert await booking_service.cancel_booking(db, booking.id, student) is True
+        assert (await booking_service.cancel_booking(db, booking.id, student))["refund_issued"] is True
     refund.assert_awaited_once()
 
 
@@ -381,7 +381,7 @@ async def test_paid_lesson_cancelled_inside_12_hours_is_not_refunded(db):
     student, booking = await _paid_booking(db, hours_from_now=6)
     with patch("app.services.payment_service.initiate_refund", new=AsyncMock(return_value=True)) as refund, \
          patch("app.services.notification_service.send_email_later"):
-        assert await booking_service.cancel_booking(db, booking.id, student) is False
+        assert (await booking_service.cancel_booking(db, booking.id, student))["refund_issued"] is False
     refund.assert_not_awaited()
 
 
@@ -393,7 +393,7 @@ async def test_admin_cancellation_is_always_refunded(db):
     admin = (await db.execute(select(User).where(User.role == "admin"))).scalars().first()
     with patch("app.services.payment_service.initiate_refund", new=AsyncMock(return_value=True)) as refund, \
          patch("app.services.notification_service.send_email_later"):
-        assert await booking_service.cancel_booking(db, booking.id, admin) is True
+        assert (await booking_service.cancel_booking(db, booking.id, admin))["refund_issued"] is True
     refund.assert_awaited_once()
 
 

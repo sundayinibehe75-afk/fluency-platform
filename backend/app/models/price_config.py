@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,13 @@ class PriceConfig(Base):
         String(3), nullable=False, server_default="USD"
     )
     label: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Monthly plans: number of lessons granted each month (None = single lesson)
+    lessons_per_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Hidden products stay in the table for old bookings but aren't offered
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

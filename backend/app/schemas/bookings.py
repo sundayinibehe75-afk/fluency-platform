@@ -6,7 +6,7 @@
 """
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from app.schemas.base import AppBaseModel
 
@@ -15,6 +15,14 @@ class BookingCreate(AppBaseModel):
     """Request body for creating a booking."""
 
     slot_id: uuid.UUID
+    # single = pay for this lesson; plan = use a plan credit; trial = free trial
+    booking_type: Literal["single", "plan", "trial"] = "single"
+
+
+class BookingReschedule(AppBaseModel):
+    """Request body for moving a booking to another slot."""
+
+    new_slot_id: uuid.UUID
 
 
 class BookingResponse(AppBaseModel):
@@ -30,6 +38,9 @@ class BookingResponse(AppBaseModel):
     stripe_session_id: Optional[str] = None
     video_room_url: Optional[str] = None
     has_review: bool = False
+    booking_type: str = "single"
+    late_cancellation: bool = False
+    student_name: Optional[str] = None
     reserved_until: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None

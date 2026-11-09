@@ -13,9 +13,12 @@ I built and deployed this platform myself on AWS EC2, and I use it as the base f
 - **Accounts and authentication:** registration, login and logout with JWT, password reset by email, and a token denylist so logged-out tokens can't be reused
 - **Rate limiting** on authentication endpoints
 - **Tutor profiles** and **availability slots** that tutors create, edit and remove
-- **Bookings:** students book a free slot; the slot is held for 15 minutes while they pay
-- **Cancellation policy:** students can cancel up to 12 hours before a lesson for a full refund; with less notice the lesson counts as used. Cancellations by the tutor are always refunded
-- **Payments with Stripe Checkout**, confirmed through a Stripe webhook
+- **Pricing:** a free trial lesson (one per student), single lessons at $10, and monthly plans of 2, 3, 4 or 5 lessons a week ($76 / $108 / $140 / $170). All lessons are 60 minutes
+- **Monthly plans** are Stripe subscriptions that renew automatically until the student cancels. Each paid month adds that month's lesson credits; unused credits expire at the end of the month. Cancelling stops the renewal and keeps the current month
+- **Bookings:** students book a free slot with a plan credit, their free trial, or a single paid lesson (the slot is held for 15 minutes while they pay)
+- **Cancellation and rescheduling:** up to 12 hours before a lesson, students can cancel (refund, or the credit goes back to their plan) or move the lesson to another time. With less notice the lesson counts as used. Cancellations by the tutor are always refunded or credited
+- **Admin tools:** students overview with plan, credits and trial status; add lessons or extend their expiry; lesson labels (trial, plan, single); time off to block whole days
+- **Payments with Stripe Checkout**, confirmed through Stripe webhooks
 - **Video lessons:** a Daily.co video room is created automatically for each confirmed booking
 - **Messaging** between students and tutors, with read status
 - **Reviews**, with admins able to hide or unhide a review
@@ -101,8 +104,10 @@ All endpoints are served under `/api`.
 | Health | `GET /api/health` |
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/logout`, `/auth/reset-password/request`, `/auth/reset-password/confirm` |
 | Tutors | `GET /tutors/{id}`, `PATCH /tutors/{id}` |
-| Availability | `GET`, `POST /availability`, `PATCH`, `DELETE /availability/{slot_id}` |
-| Bookings | `POST`, `GET /bookings`, `GET /bookings/{id}`, `POST /bookings/{id}/cancel` |
+| Availability | `GET`, `POST /availability`, `PATCH`, `DELETE /availability/{slot_id}`, `GET /availability/all`, `POST /availability/block`, `/availability/unblock` |
+| Bookings | `POST`, `GET /bookings`, `GET /bookings/{id}`, `POST /bookings/{id}/cancel`, `POST /bookings/{id}/reschedule` |
+| Plans | `GET /plans`, `GET /subscriptions/me`, `POST /subscriptions/checkout`, `POST /subscriptions/me/cancel`, `/subscriptions/me/resume` |
+| Admin | `GET /admin/students`, `GET`, `POST /admin/students/{id}/credits`, `PATCH /admin/credits/{grant_id}` |
 | Payments | `POST /payments/checkout`, `POST /payments/webhook` |
 | Messages | `GET /messages/threads`, `GET /messages/threads/{user_id}`, `POST /messages`, `PATCH /messages/{id}/read` |
 | Reviews | `POST`, `GET /reviews`, `PATCH /reviews/{id}/visibility` |
@@ -142,7 +147,7 @@ All settings come from environment variables. See `.env.example` for description
 | `DATABASE_URL` | Async PostgreSQL connection string |
 | `POSTGRES_PASSWORD` | Database password |
 | `JWT_SECRET` | Long random secret for signing tokens |
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe payments and webhook verification |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe payments and webhook verification. The webhook needs these events: `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`, `charge.refund.updated` |
 | `RESEND_API_KEY` | Transactional email |
 | `DAILY_API_KEY` | Video rooms |
 | `FRONTEND_URL` | Public URL, used for CORS and email links |
@@ -163,7 +168,7 @@ python -m pytest -q tests
 
 Unit tests cover availability, messaging, notifications, reviews, video rooms and security properties (including property-based tests with Hypothesis) and need no database.
 
-Integration tests (`tests/test_booking_flow.py`) cover the booking, payment, cancellation and refund rules against a real PostgreSQL database built from the Alembic migrations. They run when `TEST_DATABASE_URL` is set and are skipped otherwise; the CI pipeline provides a PostgreSQL service for them:
+Integration tests (`tests/test_booking_flow.py`, `tests/test_plans_credits.py`) cover the booking, payment, cancellation, refund, free trial, plan credit, subscription, rescheduling and time-off rules against a real PostgreSQL database built from the Alembic migrations. They run when `TEST_DATABASE_URL` is set and are skipped otherwise; the CI pipeline provides a PostgreSQL service for them:
 
 ```bash
 TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fluency_test python -m pytest -q tests

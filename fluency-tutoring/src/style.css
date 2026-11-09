@@ -1615,3 +1615,275 @@ footer :focus-visible,
 .offering-icon svg {
   color: var(--red);
 }
+
+/* ---------- Plans, credits, booking modes ---------- */
+.pricing-plans-title {
+  text-align: center;
+  font-size: 1.6rem;
+  margin-top: 4rem;
+  margin-bottom: 0.5rem;
+}
+
+.pricing-grid--plans {
+  margin-top: 2rem;
+}
+
+.pricing-error,
+.dashboard-notice {
+  max-width: 640px;
+  margin: 1rem auto;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.pricing-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.dashboard-notice {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  margin: 0 0 2rem;
+  max-width: none;
+  text-align: left;
+}
+
+.booking-mode {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.booking-mode legend {
+  font-weight: 600;
+  padding: 0 0.4rem;
+}
+
+.booking-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.booking-mode-option.selected {
+  border-color: var(--red);
+  background: #fff5f5;
+}
+
+.booking-mode-option small,
+.admin-muted {
+  color: var(--gray);
+}
+
+.booking-mode-note {
+  width: 100%;
+  color: var(--gray);
+  margin: 0 0 1.5rem;
+}
+
+.booking-mode .booking-mode-note {
+  margin: 0;
+}
+
+.lesson-type {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.lesson-type--trial {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.lesson-type--plan {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.lesson-type--single {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.plan-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.plan-card-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.plan-card-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.plan-card-meta,
+.plan-card-rules {
+  color: var(--gray);
+  margin-top: 0.25rem;
+}
+
+.plan-card-rules {
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+.plan-card-credits {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.plan-card-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--red);
+}
+
+.admin-search {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.admin-credits {
+  background: var(--light);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.admin-credits-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.admin-credits-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  gap: 0.25rem;
+}
+
+.admin-credits-form input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.admin-credits-form input[type='number'] {
+  width: 5rem;
+}
+
+.admin-credits-note {
+  flex: 1;
+  min-width: 180px;
+}
+
+.admin-table--compact td,
+.admin-table--compact th {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.admin-row-muted {
+  opacity: 0.55;
+}
+
+.admin-late {
+  color: #b45309;
+}
+
+.admin-status--blocked {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.admin-status--booked {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+@media (max-width: 600px) {
+  .plan-card-credits {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+.pricing-grid--plans {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.pricing-plans-sub {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.booking-mode-option input {
+  width: auto;
+  margin: 0;
+}
+
+.booking-mode-option {
+  white-space: nowrap;
+}
+
+.admin-credits,
+.admin-credits-form label {
+  text-align: left;
+}
+
+.admin-credits-form {
+  justify-content: flex-start;
+}
+
+.admin-credits-form label {
+  width: auto;
+  margin: 0;
+}
+
+.admin-credits-form input {
+  width: auto;
+}
+
+@media (max-width: 600px) {
+  .booking-mode-option {
+    white-space: normal;
+  }
+}
+
+form.admin-credits-form {
+  flex-direction: row;
+}

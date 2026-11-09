@@ -5,6 +5,7 @@ Endpoints:
 - GET /bookings — student/admin auth, list bookings
 - GET /bookings/{id} — student/admin auth, get a single booking
 - POST /bookings/{id}/cancel — student/admin auth, cancel a booking
+- POST /bookings/{id}/reschedule — student/admin auth, move to another slot
 """
 import uuid
 from typing import List
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db, require_role
 from app.models.user import User
-from app.schemas.bookings import BookingCreate, BookingResponse
+from app.schemas.bookings import BookingCreate, BookingReschedule, BookingResponse
 from app.services import booking_service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -31,6 +32,7 @@ async def create_booking(
         db=db,
         student_id=current_user.id,
         slot_id=body.slot_id,
+        booking_type=body.booking_type,
     )
 
 
@@ -67,12 +69,28 @@ async def cancel_booking(
 
     Returns whether a refund was issued.
     """
-    refunded = await booking_service.cancel_booking(
+    result = await booking_service.cancel_booking(
         db=db,
         booking_id=booking_id,
         actor=current_user,
     )
-    return {
-        "status": "cancelled",
-        "refund_issued": refunded,
-    }
+    return {"status": "cancelled", **result}
+
+
+@router.post("/{booking_id}/reschedule", response_model=BookingResponse)
+async def reschedule_booking(
+    booking_id: uuid.UUID,
+    body: BookingReschedule,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("student", "admin")),
+) -> BookingResponse:
+    """Move a confirmed lesson to another free slot.
+
+    Students can reschedule up to 12 hours before the lesson; the admin any time.
+    """
+    return await booking_service.reschedule_booking(
+        db=db,
+        booking_id=booking_id,
+        new_slot_id=body.new_slot_id,
+        actor=current_user,
+    )

@@ -7,6 +7,8 @@ import os
 import sys
 import uuid
 
+from sqlalchemy import select
+
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.tutor import Tutor
@@ -60,20 +62,27 @@ async def seed():
         )
         db.add(tutor)
 
-        # Seed price configs
-        prices = [
-            PriceConfig(product_key="single_session", price_cents=4500, currency="USD", label="Single Session"),
-            PriceConfig(product_key="monthly_package", price_cents=16000, currency="USD", label="Monthly Package (4 lessons)"),
-            PriceConfig(product_key="intensive_package", price_cents=28000, currency="USD", label="Intensive Package (8 lessons)"),
+        # Seed prices that don't exist yet (migration 0003 also adds the plans)
+        wanted = [
+            ("single_session", 1000, "Single lesson (60 min)", None, 1),
+            ("plan_2x", 7600, "2 lessons a week (8 per month)", 8, 2),
+            ("plan_3x", 10800, "3 lessons a week (12 per month)", 12, 3),
+            ("plan_4x", 14000, "4 lessons a week (16 per month)", 16, 4),
+            ("plan_5x", 17000, "5 lessons a week (20 per month)", 20, 5),
         ]
-        for p in prices:
-            db.add(p)
+        existing_keys = set((await db.execute(select(PriceConfig.product_key))).scalars())
+        for key, cents, label, lessons, order in wanted:
+            if key not in existing_keys:
+                db.add(PriceConfig(
+                    product_key=key, price_cents=cents, currency="USD", label=label,
+                    lessons_per_month=lessons, sort_order=order,
+                ))
 
         await db.commit()
         print("✅ Seed complete!")
         print(f"   Admin email: {ADMIN_EMAIL}")
         print(f"   Tutor ID: 00000000-0000-0000-0000-000000000001")
-        print(f"   Price configs: single_session=$45, monthly=$160, intensive=$280")
+        print("   Prices: single lesson $10; plans 2x/3x/4x/5x a week = $76/$108/$140/$170")
 
 
 if __name__ == "__main__":

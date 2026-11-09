@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import text, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,20 @@ class Booking(Base):
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default="USD"
+    )
+    # "single" (paid per lesson), "plan" (uses a monthly-plan credit) or "trial" (free)
+    booking_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="single"
+    )
+    # The credit grant a plan lesson was taken from (returned on timely cancel)
+    credit_grant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("credit_grants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Cancelled with less than 12 hours' notice: the lesson counts as used
+    late_cancellation: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
     stripe_session_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True
