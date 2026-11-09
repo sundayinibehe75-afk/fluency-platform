@@ -38,6 +38,9 @@ VALID_TEMPLATES = {
     "cancellation",
     "post_lesson",
     "password_reset",
+    "lesson_notes",
+    "weekly_confirmation",
+    "credits_expiring",
 }
 
 
@@ -153,5 +156,8 @@ def _get_subject(template_name: str, context: dict) -> str:
         "cancellation": "Booking Cancellation Confirmation",
         "post_lesson": "How Was Your Lesson?",
         "password_reset": "Reset Your Password",
+        "lesson_notes": "Your Lesson Notes and Homework",
+        "weekly_confirmation": "Your Weekly Lessons Are Booked",
+        "credits_expiring": "Your Lessons Expire Soon",
     }
     return subjects.get(template_name, "Fluency Tutoring")

@@ -46,6 +46,7 @@ export default function BookingCalendar() {
   // How this lesson is paid: 'trial' (free), 'plan' (uses a credit) or 'single' ($10)
   const [account, setAccount] = useState(null)
   const [bookingType, setBookingType] = useState(null)
+  const [weekly, setWeekly] = useState(false)
 
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
@@ -108,6 +109,12 @@ export default function BookingCalendar() {
       }
 
       const type = bookingType || 'single'
+
+      if (type === 'plan' && weekly) {
+        const res = await api.post('/bookings/weekly', { slot_id: slot.id })
+        navigate(`/dashboard?weekly=${res.data.booked.length}&skipped=${res.data.skipped.length}`)
+        return
+      }
       const bookingRes = await api.post('/bookings', { slot_id: slot.id, booking_type: type })
 
       if (type !== 'single') {
@@ -178,6 +185,12 @@ export default function BookingCalendar() {
                   {type === 'single' && <>Single lesson <small>($10, pay now)</small></>}
                 </label>
               ))}
+              {bookingType === 'plan' && account.credits_remaining > 1 && (
+                <label className="booking-weekly">
+                  <input type="checkbox" checked={weekly} onChange={(e) => setWeekly(e.target.checked)} />
+                  Book this time every week while my plan lessons last
+                </label>
+              )}
               {!account.plan && account.credits_remaining === 0 && (
                 <p className="booking-mode-note">
                   Taking lessons every week? <Link to="/#pricing" className="dashboard-link">See monthly plans</Link>

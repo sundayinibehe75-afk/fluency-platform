@@ -16,6 +16,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timefmt import is_valid_timezone
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.jwt_denylist import JwtDenylist
 from app.models.password_reset_token import PasswordResetToken
@@ -68,6 +69,8 @@ async def register_student(db: AsyncSession, data: RegisterRequest) -> TokenResp
         last_name=data.last_name,
         role="student",
         cefr_level=data.cefr_level,
+        timezone=data.timezone if is_valid_timezone(data.timezone) else "UTC",
+        learning_goal=data.learning_goal,
     )
     db.add(user)
     await db.flush()  # populate user.id before creating token

@@ -6,7 +6,7 @@
 """
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from app.schemas.base import AppBaseModel
 
@@ -41,6 +41,7 @@ class BookingResponse(AppBaseModel):
     booking_type: str = "single"
     late_cancellation: bool = False
     student_name: Optional[str] = None
+    has_notes: bool = False
     reserved_until: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
@@ -55,3 +56,14 @@ class BookingCancelRequest(AppBaseModel):
     """
 
     pass
+
+
+class BookingWeekly(AppBaseModel):
+    """Request body for booking the same time every week."""
+
+    slot_id: uuid.UUID
+
+
+class WeeklyBookingResponse(AppBaseModel):
+    booked: List[BookingResponse]
+    skipped: List[datetime]

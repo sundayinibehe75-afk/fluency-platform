@@ -14,6 +14,7 @@ import StudentDashboard from './pages/dashboard/StudentDashboard'
 import AdminDashboard from './pages/dashboard/AdminDashboard'
 import Inbox from './pages/messages/Inbox'
 import ReviewForm from './pages/reviews/ReviewForm'
+import LessonNotes from './pages/notes/LessonNotes'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/messages" element={<Inbox />} />
           <Route path="/reviews/:bookingId" element={<ReviewForm />} />
+          <Route path="/notes" element={<LessonNotes />} />
         </Routes>
       </NotificationProvider>
     </AuthProvider>

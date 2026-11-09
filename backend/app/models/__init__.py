@@ -11,6 +11,7 @@ from app.models.message import Message
 from app.models.password_reset_token import PasswordResetToken
 from app.models.payment import Payment
 from app.models.price_config import PriceConfig
+from app.models.lesson_note import LessonNote
 from app.models.review import Review
 from app.models.subscription import Subscription
 from app.models.tutor import Tutor
@@ -21,6 +22,7 @@ __all__ = [
     "Booking",
     "CreditGrant",
     "JwtDenylist",
+    "LessonNote",
     "Message",
     "PasswordResetToken",
     "Payment",

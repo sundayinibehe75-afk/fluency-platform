@@ -3,7 +3,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
+
+LearningGoal = Literal["exam", "work", "study", "daily_life", "family", "other"]
 
 
 class RegisterRequest(BaseModel):
@@ -16,6 +20,8 @@ class RegisterRequest(BaseModel):
         pattern=r"^(A0|A1|A2|B1|B2|C1|C2)$",
         description="CEFR level: A0–C2",
     )
+    timezone: Optional[str] = Field(None, max_length=64, description="IANA name, e.g. Africa/Lagos")
+    learning_goal: Optional[LearningGoal] = None
 
 
 class LoginRequest(BaseModel):

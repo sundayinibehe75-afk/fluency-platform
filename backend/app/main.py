@@ -34,6 +34,7 @@ from app.routers import (
     bookings,
     health,
     messages,
+    notes,
     payments,
     plans,
     reviews,
@@ -189,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(reviews.router, prefix=API_PREFIX)
     app.include_router(plans.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
+    app.include_router(notes.router, prefix=API_PREFIX)
 
     logger.info(
         "Fluency Platform API started",

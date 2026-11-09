@@ -13,6 +13,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import timefmt
 from app.core.config import settings
 from app.models.availability_slot import AvailabilitySlot
 from app.models.booking import Booking
@@ -61,8 +62,8 @@ async def send_lesson_reminders(db: AsyncSession) -> int:
         student: User = booking.student
         slot: AvailabilitySlot = booking.slot
 
-        lesson_date = slot.start_at.strftime("%A, %B %d, %Y")
-        lesson_time = slot.start_at.strftime("%H:%M UTC")
+        lesson_date = timefmt.lesson_date(slot.start_at, student.timezone)
+        lesson_time = timefmt.lesson_time(slot.start_at, student.timezone)
         lesson_url = f"{settings.frontend_url}/lessons/{booking.id}"
 
         try:

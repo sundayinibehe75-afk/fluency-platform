@@ -4,6 +4,7 @@ Functions:
 - create_booking — initiate a booking for a student on a slot
 - confirm_booking — transition booking to confirmed, mark slot as booked
 - cancel_booking — cancel a booking; refund or return the credit with 12h+ notice
+- book_weekly — book the same time every week with plan lessons
 - reschedule_booking — move a confirmed booking to another slot (12h+ notice)
 - get_booking — fetch a single booking with ownership enforcement
 - list_bookings — list bookings for a student or all (admin)
@@ -70,6 +71,7 @@ async def create_booking(
     student_id: uuid.UUID,
     slot_id: uuid.UUID,
     booking_type: str = "single",
+    notify: bool = True,
 ) -> BookingResponse:
     """Create a new booking for the given student and slot.
 
@@ -214,18 +216,21 @@ async def create_booking(
 
     if booking_status == "confirmed":
         # Free trial and plan lessons need no payment: email + video room now
-        await notify_booking_confirmed(db, booking.id)
+        await notify_booking_confirmed(db, booking.id, send_email=notify)
 
     return _booking_to_response(booking, slot)
 
 
-async def notify_booking_confirmed(db: AsyncSession, booking_id: uuid.UUID) -> None:
+async def notify_booking_confirmed(
+    db: AsyncSession, booking_id: uuid.UUID, send_email: bool = True
+) -> None:
     """Send the confirmation email and create the video room for a booking.
 
     Called after a booking becomes confirmed (normally from the Stripe
     webhook). Failures are logged and never raised, so a problem with email or
     video never undoes a confirmed payment.
     """
+    from app.core import timefmt
     from app.core.config import settings
     from app.services.notification_service import send_email_later
     from app.services.video_service import create_room
@@ -238,15 +243,15 @@ async def notify_booking_confirmed(db: AsyncSession, booking_id: uuid.UUID) -> N
             .where(Booking.id == booking_id)
         )
         row = result.first()
-        if row is not None:
+        if row is not None and send_email:
             booking, slot, student = row
             send_email_later(
                 to=student.email,
                 template_name="booking_confirmation",
                 context={
                     "first_name": student.first_name,
-                    "lesson_date": slot.start_at.strftime("%A, %B %d, %Y"),
-                    "lesson_time": slot.start_at.strftime("%H:%M UTC"),
+                    "lesson_date": timefmt.lesson_date(slot.start_at, student.timezone),
+                    "lesson_time": timefmt.lesson_time(slot.start_at, student.timezone),
                     "lesson_url": f"{settings.frontend_url}/lessons/{booking.id}",
                 },
             )
@@ -602,6 +607,124 @@ async def reschedule_booking(
     return _booking_to_response(booking, new_slot)
 
 
+MAX_WEEKLY_LESSONS = 8
+
+
+async def book_weekly(
+    db: AsyncSession,
+    student: User,
+    slot_id: uuid.UUID,
+) -> dict:
+    """Book the same weekday and time every week with plan credits.
+
+    Starts with the chosen slot and repeats every 7 days while the student
+    has plan lessons that are valid on that date (so it stops when this
+    month's lessons run out or expire). Weeks where the tutor has no free
+    slot at that time are skipped and reported.
+
+    Returns {"booked": [BookingResponse...], "skipped": [datetime...]}.
+    """
+    from app.core import timefmt
+    from app.core.config import settings
+    from app.models.credit_grant import CreditGrant
+    from app.services.notification_service import send_email_later
+
+    first = (
+        await db.execute(select(AvailabilitySlot).where(AvailabilitySlot.id == slot_id))
+    ).scalar_one_or_none()
+    if first is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "NOT_FOUND", "detail": "Slot not found."},
+        )
+
+    # Book no further than the latest date any of the student's credits are valid
+    last_expiry = (
+        await db.execute(
+            select(CreditGrant.expires_at)
+            .where(
+                CreditGrant.student_id == student.id,
+                CreditGrant.used < CreditGrant.total,
+                CreditGrant.expires_at > datetime.now(tz=timezone.utc),
+            )
+            .order_by(CreditGrant.expires_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if last_expiry is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "NO_CREDITS", "detail": "You have no plan lessons left to book."},
+        )
+
+    booked: list[BookingResponse] = []
+    skipped: list[datetime] = []
+    for week in range(MAX_WEEKLY_LESSONS):
+        start_at = first.start_at + timedelta(weeks=week)
+        if start_at >= last_expiry:
+            break
+        slot = (
+            await db.execute(
+                select(AvailabilitySlot)
+                .where(
+                    AvailabilitySlot.tutor_id == first.tutor_id,
+                    # same time each week (a minute either way is fine)
+                    AvailabilitySlot.start_at >= start_at - timedelta(minutes=1),
+                    AvailabilitySlot.start_at <= start_at + timedelta(minutes=1),
+                    AvailabilitySlot.status == "available",
+                )
+                .order_by(AvailabilitySlot.start_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if slot is None:
+            skipped.append(start_at)
+            continue
+        try:
+            async with db.begin_nested():
+                booked.append(
+                    await create_booking(db, student.id, slot.id, "plan", notify=False)
+                )
+        except HTTPException as exc:
+            if isinstance(exc.detail, dict) and exc.detail.get("error") == "NO_CREDITS":
+                break  # all lessons used
+            skipped.append(start_at)
+
+    if not booked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "BOOKING_CONFLICT", "detail": "None of these times could be booked."},
+        )
+
+    try:
+        items = "".join(
+            f"<p style=\"margin: 0 0 6px;\">{timefmt.lesson_date(b.start_at, student.timezone)}, "
+            f"{timefmt.lesson_time(b.start_at, student.timezone)}</p>"
+            for b in booked
+        )
+        skipped_text = (
+            "These weeks had no free slot at that time, so they were not booked: "
+            + "; ".join(timefmt.short_datetime(d, student.timezone) for d in skipped)
+            + ". You can choose another time for them."
+            if skipped
+            else "You will get a reminder the day before each lesson."
+        )
+        send_email_later(
+            to=student.email,
+            template_name="weekly_confirmation",
+            context={
+                "first_name": student.first_name,
+                "lesson_list": items,
+                "skipped_text": skipped_text,
+                "dashboard_url": f"{settings.frontend_url}/dashboard",
+            },
+        )
+    except Exception:
+        logger.exception("Failed to send weekly booking email", extra={"student_id": str(student.id)})
+
+    return {"booked": booked, "skipped": skipped}
+
+
 async def get_booking(
     db: AsyncSession,
     booking_id: uuid.UUID,
@@ -649,13 +772,15 @@ async def list_bookings(
     Students see their own bookings. Admins see all bookings.
     Results are sorted by slot start_at DESC.
     """
+    from app.models.lesson_note import LessonNote
     from app.models.review import Review
 
     query = (
-        select(Booking, AvailabilitySlot, Review.id, User.first_name, User.last_name)
+        select(Booking, AvailabilitySlot, Review.id, User.first_name, User.last_name, LessonNote.id)
         .join(AvailabilitySlot, Booking.slot_id == AvailabilitySlot.id)
         .join(User, Booking.student_id == User.id)
         .outerjoin(Review, Review.booking_id == Booking.id)
+        .outerjoin(LessonNote, LessonNote.booking_id == Booking.id)
     )
 
     if user.role != "admin":
@@ -666,9 +791,10 @@ async def list_bookings(
     result = await db.execute(query)
     rows = result.all()
     responses = []
-    for booking, slot, review_id, first_name, last_name in rows:
+    for booking, slot, review_id, first_name, last_name, note_id in rows:
         response = _booking_to_response(booking, slot, has_review=review_id is not None)
         response.student_name = f"{first_name} {last_name}".strip()
+        response.has_notes = note_id is not None
         responses.append(response)
     return responses
 

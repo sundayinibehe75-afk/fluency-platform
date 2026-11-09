@@ -1,7 +1,8 @@
 """Admin router — students and lesson credits.
 
 Endpoints (admin only):
-- GET   /admin/students                       — students with plan, credits, trial
+- GET   /admin/stats                          — overview numbers for this month
+- GET   /admin/students                       — students with plan, credits, trial, goal
 - GET   /admin/students/{id}/credits          — a student's credit grants
 - POST  /admin/students/{id}/credits          — add lessons (e.g. a goodwill credit)
 - PATCH /admin/credits/{grant_id}             — extend expiry and/or add lessons
@@ -30,6 +31,14 @@ class AddCredits(BaseModel):
 class UpdateGrant(BaseModel):
     expires_at: Optional[datetime] = None
     add_lessons: Optional[int] = Field(default=None, ge=-100, le=100)
+
+
+@router.get("/stats")
+async def stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+) -> dict:
+    return await admin_service.stats(db, current_user)
 
 
 @router.get("/students")

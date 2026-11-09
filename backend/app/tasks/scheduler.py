@@ -2,7 +2,8 @@
 
 - every minute:   release unpaid bookings whose 15-minute reservation ended
 - every 5 min:    mark confirmed lessons that have finished as 'completed'
-- every hour:     send 24-hour lesson reminder emails
+- every hour:     send 24-hour lesson reminder emails, and warn students whose
+                  unbooked plan lessons expire within 5 days
 
 Each job uses its own database session and commits its own work, so one
 failing job never affects the others or the web requests.
@@ -44,10 +45,12 @@ def start_background_jobs() -> list[asyncio.Task]:
         complete_finished_bookings,
         expire_pending_bookings,
     )
+    from app.services.credit_service import send_expiry_reminders
     from app.tasks.reminder_task import send_lesson_reminders
 
     return [
         asyncio.create_task(_every(60, "expire_pending_bookings", expire_pending_bookings)),
         asyncio.create_task(_every(300, "complete_finished_bookings", complete_finished_bookings)),
         asyncio.create_task(_every(3600, "send_lesson_reminders", send_lesson_reminders)),
+        asyncio.create_task(_every(3600, "send_expiry_reminders", send_expiry_reminders)),
     ]

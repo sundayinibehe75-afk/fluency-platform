@@ -33,6 +33,11 @@ class CreditGrant(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Stripe invoice that paid for these credits — makes webhook retries safe
     stripe_invoice_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    # What the student paid for this month (plan grants), for income figures
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

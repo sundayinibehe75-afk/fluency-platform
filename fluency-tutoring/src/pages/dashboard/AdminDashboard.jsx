@@ -8,37 +8,115 @@ import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
 import { LessonTypeBadge } from './StudentDashboard'
+import { goalLabel } from '../../utils/profile'
 
 const TUTOR_ID = import.meta.env.VITE_TUTOR_ID || '00000000-0000-0000-0000-000000000001'
 
 const TABS = ['Overview', 'Bookings', 'Students', 'Availability', 'Time Off', 'Tutor Profile', 'Reviews']
 
+const PLAN_NAMES = { plan_2x: '2× a week', plan_3x: '3× a week', plan_4x: '4× a week', plan_5x: '5× a week' }
+
 function OverviewTab() {
+  const api = useApi()
+  const [stats, setStats] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api
+      .get('/admin/stats')
+      .then((res) => setStats(res.data))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load the numbers.')))
+  }, [])
+
+  if (error) return <p className="admin-form-message">{error}</p>
+  if (!stats) return <p>Loading...</p>
+
+  const cards = [
+    ['Income', formatCents(stats.income_this_month_cents), `${stats.month_label}, after refunds`],
+    ['Lessons taught', stats.lessons_taught_this_month, stats.month_label],
+    ['Next 7 days', stats.upcoming_next_7_days, 'lessons booked'],
+    ['Active plans', stats.active_plans,
+      Object.entries(stats.plans_by_type).map(([k, n]) => `${n} × ${PLAN_NAMES[k] || k}`).join(', ') || 'none yet'],
+    ['Students', stats.students, `${stats.new_students_this_month} new this month`],
+    ['Free trials', stats.trials_this_month, 'this month'],
+    ['Trial → plan', stats.trial_students ? `${Math.round((100 * stats.trial_to_plan) / stats.trial_students)}%` : '—',
+      `${stats.trial_to_plan} of ${stats.trial_students} trial students bought a plan`],
+    ['Late cancellations', stats.late_cancellations_this_month, 'this month (under 12h)'],
+  ]
+
   return (
     <div className="admin-overview">
       <div className="admin-stats-grid">
-        <div className="admin-stat-card">
-          <h3>Total Bookings</h3>
-          <p className="admin-stat-value">—</p>
-          <span className="admin-stat-note">Stats endpoint coming soon</span>
-        </div>
-        <div className="admin-stat-card">
-          <h3>Revenue</h3>
-          <p className="admin-stat-value">—</p>
-          <span className="admin-stat-note">Stats endpoint coming soon</span>
-        </div>
-        <div className="admin-stat-card">
-          <h3>Upcoming Lessons</h3>
-          <p className="admin-stat-value">—</p>
-          <span className="admin-stat-note">Stats endpoint coming soon</span>
-        </div>
-        <div className="admin-stat-card">
-          <h3>Total Students</h3>
-          <p className="admin-stat-value">—</p>
-          <span className="admin-stat-note">Stats endpoint coming soon</span>
-        </div>
+        {cards.map(([title, value, note]) => (
+          <div className="admin-stat-card" key={title}>
+            <h3>{title}</h3>
+            <p className="admin-stat-value">{value}</p>
+            <span className="admin-stat-note">{note}</span>
+          </div>
+        ))}
       </div>
     </div>
+  )
+}
+
+function NotesEditor({ booking, onSaved, onClose }) {
+  const api = useApi()
+  const [form, setForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    api
+      .get(`/bookings/${booking.id}/notes`)
+      .then((res) =>
+        setForm({
+          summary: res.data.summary || '',
+          homework: res.data.homework || '',
+          vocabulary: res.data.vocabulary || '',
+        })
+      )
+      .catch((err) => setMessage(getErrorMessage(err, 'Could not load notes.')))
+  }, [booking.id])
+
+  async function save(e) {
+    e.preventDefault()
+    try {
+      setSaving(true)
+      await api.put(`/bookings/${booking.id}/notes`, form)
+      setMessage(booking.has_notes ? 'Saved.' : 'Saved. The student has been emailed.')
+      onSaved()
+    } catch (err) {
+      setMessage(getErrorMessage(err, 'Could not save.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!form) return <p className="admin-muted">{message || 'Loading...'}</p>
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+
+  return (
+    <form onSubmit={save} className="notes-editor">
+      <label>
+        What we covered
+        <textarea rows={3} value={form.summary} onChange={set('summary')} placeholder="Topics, grammar, what went well, what to practise" />
+      </label>
+      <label>
+        Homework
+        <textarea rows={2} value={form.homework} onChange={set('homework')} placeholder="e.g. Write 5 sentences in the Perfekt" />
+      </label>
+      <label>
+        New words <small className="admin-muted">(one per line: der Bahnhof - train station)</small>
+        <textarea rows={4} value={form.vocabulary} onChange={set('vocabulary')} />
+      </label>
+      <div className="dashboard-card-actions">
+        <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+          {saving ? 'Saving…' : 'Save notes'}
+        </button>
+        <button type="button" className="btn btn-outline-dark btn-sm" onClick={onClose}>Close</button>
+        {message && <span className="admin-muted">{message}</span>}
+      </div>
+    </form>
   )
 }
 
@@ -47,6 +125,7 @@ function BookingsTab() {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState(null)
+  const [notesId, setNotesId] = useState(null)
 
   useEffect(() => {
     fetchBookings()
@@ -108,7 +187,8 @@ function BookingsTab() {
         </thead>
         <tbody>
           {bookings.map((booking) => (
-            <tr key={booking.id}>
+            <Fragment key={booking.id}>
+            <tr>
               <td>{booking.student_name || 'Student'}</td>
               <td>{formatDate(booking.start_at || booking.slot_start_at)}</td>
               <td><LessonTypeBadge type={booking.booking_type} /></td>
@@ -132,7 +212,16 @@ function BookingsTab() {
                     Move
                   </Link>
                 )}{' '}
-                {booking.status === 'confirmed' && (
+                {['confirmed', 'completed'].includes(booking.status) &&
+                  new Date(booking.start_at) <= new Date() && (
+                    <button
+                      className={`btn btn-sm ${booking.has_notes ? 'btn-outline-dark' : 'btn-primary'}`}
+                      onClick={() => setNotesId(notesId === booking.id ? null : booking.id)}
+                    >
+                      {booking.has_notes ? 'Edit notes' : 'Add notes'}
+                    </button>
+                  )}{' '}
+                {booking.status === 'confirmed' && new Date(booking.start_at) > new Date() && (
                   <button
                     onClick={() => handleCancel(booking.id)}
                     disabled={cancellingId === booking.id}
@@ -143,6 +232,20 @@ function BookingsTab() {
                 )}
               </td>
             </tr>
+            {notesId === booking.id && (
+              <tr>
+                <td colSpan={6}>
+                  <NotesEditor
+                    booking={booking}
+                    onSaved={() =>
+                      setBookings((prev) => prev.map((b) => (b.id === booking.id ? { ...b, has_notes: true } : b)))
+                    }
+                    onClose={() => setNotesId(null)}
+                  />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -312,7 +415,12 @@ function StudentsTab() {
                 <tr>
                   <td>
                     {s.first_name} {s.last_name}
+                    {s.cefr_level && <span className="lesson-type lesson-type--single" style={{ marginLeft: '0.4rem' }}>{s.cefr_level}</span>}
                     <br /><small className="admin-muted">{s.email}</small>
+                    {(s.learning_goal || s.goal_note) && (
+                      <><br /><small>{goalLabel(s.learning_goal)}{s.goal_note ? ` — “${s.goal_note}”` : ''}</small></>
+                    )}
+                    <br /><small className="admin-muted">{s.timezone}</small>
                   </td>
                   <td>
                     {s.plan ? s.plan.label : '—'}

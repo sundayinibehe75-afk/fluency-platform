@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useApi } from '../../hooks/useApi'
 import { formatDate } from '../../utils/dateUtils'
 import { formatCents } from '../../utils/formatCurrency'
+import { GOALS, LEVELS, allTimeZones, browserTimeZone, goalLabel } from '../../utils/profile'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
@@ -82,6 +83,129 @@ function PlanCard({ account, onCancel, onResume, busy }) {
   )
 }
 
+function ProfileCard() {
+  const api = useApi()
+  const [profile, setProfile] = useState(null)
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get('/users/me').then((res) => setProfile(res.data)).catch(() => {})
+  }, [])
+
+  if (!profile) return null
+
+  const browserZone = browserTimeZone()
+  const zoneDiffers = profile.timezone !== browserZone
+
+  function start() {
+    setForm({
+      cefr_level: profile.cefr_level || '',
+      learning_goal: profile.learning_goal || '',
+      goal_note: profile.goal_note || '',
+      timezone: profile.timezone,
+    })
+    setError('')
+    setEditing(true)
+  }
+
+  async function save(patch) {
+    try {
+      setSaving(true)
+      const res = await api.patch('/users/me', patch)
+      setProfile(res.data)
+      setEditing(false)
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not save. Please try again.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    save({
+      cefr_level: form.cefr_level || null,
+      learning_goal: form.learning_goal || null,
+      goal_note: form.goal_note.trim() || null,
+      timezone: form.timezone,
+    })
+  }
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+
+  return (
+    <section className="dashboard-section plan-card profile-card">
+      <h2 className="dashboard-section-title">My Learning Profile</h2>
+      {!editing ? (
+        <>
+          <dl className="profile-grid">
+            <div><dt>Level</dt><dd>{profile.cefr_level || '—'}</dd></div>
+            <div><dt>Goal</dt><dd>{goalLabel(profile.learning_goal)}</dd></div>
+            <div><dt>Time zone</dt><dd>{profile.timezone}</dd></div>
+          </dl>
+          {profile.goal_note && <p className="plan-card-meta">“{profile.goal_note}”</p>}
+          {zoneDiffers && (
+            <p className="profile-zone-hint">
+              Your device is set to {browserZone}.{' '}
+              <button className="link-button" onClick={() => save({ timezone: browserZone })} disabled={saving}>
+                Use {browserZone} for my emails
+              </button>
+            </p>
+          )}
+          <div className="dashboard-card-actions">
+            <button className="btn btn-outline-dark btn-sm" onClick={start}>Edit</button>
+          </div>
+        </>
+      ) : (
+        <form onSubmit={submit} className="profile-form">
+          <label>
+            Level
+            <select value={form.cefr_level} onChange={set('cefr_level')}>
+              <option value="">Not sure</option>
+              {LEVELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <label>
+            Goal
+            <select value={form.learning_goal} onChange={set('learning_goal')}>
+              <option value="">—</option>
+              {GOALS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
+          </label>
+          <label className="profile-form-wide">
+            Tell your tutor more (optional)
+            <textarea
+              rows={2}
+              maxLength={500}
+              value={form.goal_note}
+              onChange={set('goal_note')}
+              placeholder="e.g. Goethe B1 exam in March, I want to speak more confidently at work"
+            />
+          </label>
+          <label>
+            Time zone (for emails)
+            <select value={form.timezone} onChange={set('timezone')}>
+              {allTimeZones().map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+          </label>
+          {error && <p className="pricing-error profile-form-wide">{error}</p>}
+          <div className="dashboard-card-actions profile-form-wide">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
 export default function StudentDashboard() {
   const { user } = useAuth()
   const api = useApi()
@@ -93,6 +217,11 @@ export default function StudentDashboard() {
   const [params] = useSearchParams()
   const notice = params.get('booked')
     ? 'Your lesson is booked. A confirmation email is on its way.'
+    : params.get('weekly')
+      ? `Booked ${params.get('weekly')} weekly lesson(s).` +
+        (Number(params.get('skipped')) > 0
+          ? ` ${params.get('skipped')} week(s) had no free slot at that time; we've emailed you the dates.`
+          : ' A confirmation email is on its way.')
     : params.get('moved')
       ? 'Your lesson has been moved. We have emailed you the new time.'
       : params.get('plan') === 'success'
@@ -213,6 +342,8 @@ export default function StudentDashboard() {
 
           {notice && <p className="dashboard-notice" role="status">{notice}</p>}
 
+          <ProfileCard />
+
           <PlanCard
             account={account}
             busy={planBusy}
@@ -297,6 +428,11 @@ export default function StudentDashboard() {
                           </span>
                         </div>
                         <div className="dashboard-card-actions">
+                          {booking.has_notes && (
+                            <Link to="/notes" className="btn btn-outline-dark btn-sm">
+                              Notes &amp; homework
+                            </Link>
+                          )}
                           {booking.status === 'completed' && !booking.has_review && (
                             <Link
                               to={`/reviews/${booking.id}`}

@@ -23,6 +23,11 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     # A0–C2, nullable
     cefr_level: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    # IANA time zone name, e.g. "Africa/Lagos"; used for times in emails
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default="UTC")
+    # exam | work | study | daily_life | family | other
+    learning_goal: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    goal_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -296,6 +296,10 @@ async def _handle_refund_updated(
 ) -> None:
     """Handle charge.refund.updated event — record refund and update booking status."""
     refund_obj = event["data"]["object"]  # plain dict from json.loads
+    if refund_obj.get("status") not in (None, "succeeded"):
+        # pending/failed updates: only a finished refund is recorded, so the
+        # same refund is never counted twice
+        return
     payment_intent_id = refund_obj.get("payment_intent")
     amount_refunded = refund_obj.get("amount", 0)
     currency = refund_obj.get("currency", "usd").upper()

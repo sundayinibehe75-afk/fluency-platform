@@ -69,8 +69,10 @@ async def grant_credits(
     subscription_id: uuid.UUID | None = None,
     stripe_invoice_id: str | None = None,
     note: str | None = None,
+    amount_cents: int | None = None,
 ) -> CreditGrant:
     grant = CreditGrant(
+        amount_cents=amount_cents,
         student_id=student_id,
         subscription_id=subscription_id,
         source=source,
@@ -130,3 +132,50 @@ async def trial_available(db: AsyncSession, student_id: uuid.UUID) -> bool:
         .limit(1)
     )
     return result.first() is None
+
+
+EXPIRY_REMINDER_DAYS = 5
+
+
+async def send_expiry_reminders(db: AsyncSession) -> int:
+    """Email students whose unbooked lessons expire within a few days.
+
+    Each grant gets at most one reminder. Returns how many were sent.
+    """
+    from datetime import timedelta
+
+    from app.core import timefmt
+    from app.core.config import settings
+    from app.models.user import User
+    from app.services.notification_service import send_email_later
+
+    now = datetime.now(tz=timezone.utc)
+    rows = (
+        await db.execute(
+            select(CreditGrant, User)
+            .join(User, CreditGrant.student_id == User.id)
+            .where(
+                and_(
+                    CreditGrant.used < CreditGrant.total,
+                    CreditGrant.expires_at > now,
+                    CreditGrant.expires_at <= now + timedelta(days=EXPIRY_REMINDER_DAYS),
+                    CreditGrant.expiry_reminder_sent_at.is_(None),
+                )
+            )
+            .with_for_update(of=CreditGrant, skip_locked=True)
+        )
+    ).all()
+    for grant, student in rows:
+        send_email_later(
+            to=student.email,
+            template_name="credits_expiring",
+            context={
+                "first_name": student.first_name,
+                "credits_left": str(grant.total - grant.used),
+                "expiry_date": timefmt.lesson_date(grant.expires_at, student.timezone),
+                "booking_url": f"{settings.frontend_url}/booking?type=plan",
+            },
+        )
+        grant.expiry_reminder_sent_at = now
+    await db.flush()
+    return len(rows)

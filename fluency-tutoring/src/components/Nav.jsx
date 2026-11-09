@@ -33,7 +33,14 @@ export default function Nav() {
         <li><a href="/#testimonials" onClick={handleLinkClick}>Reviews</a></li>
         {user ? (
           <>
-            <li><Link to="/dashboard" onClick={handleLinkClick}>Dashboard</Link></li>
+            <li>
+              <Link to={user.role === 'admin' ? '/admin' : '/dashboard'} onClick={handleLinkClick}>
+                Dashboard
+              </Link>
+            </li>
+            {user.role === 'student' && (
+              <li><Link to="/notes" onClick={handleLinkClick}>My Notes</Link></li>
+            )}
             <li><Link to="/messages" onClick={handleLinkClick}>Messages</Link></li>
             <li>
               <button

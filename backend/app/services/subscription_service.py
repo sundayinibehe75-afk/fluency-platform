@@ -336,6 +336,7 @@ async def handle_invoice_paid(invoice: dict, db: AsyncSession) -> None:
         source="subscription",
         subscription_id=sub.id,
         stripe_invoice_id=invoice_id,
+        amount_cents=invoice.get("amount_paid"),
     )
 
 

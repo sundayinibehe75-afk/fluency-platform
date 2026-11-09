@@ -6,6 +6,7 @@ import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
 import { nextPath } from '../../utils/nextPath'
+import { GOALS, browserTimeZone } from '../../utils/profile'
 
 export default function Register() {
   const [firstName, setFirstName] = useState('')
@@ -13,6 +14,7 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cefrLevel, setCefrLevel] = useState('')
+  const [goal, setGoal] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -37,6 +39,8 @@ export default function Register() {
         email,
         password,
         cefr_level: cefrLevel || null,
+        learning_goal: goal || null,
+        timezone: browserTimeZone(),
       })
       login(res.data.access_token)
       navigate(nextPath('/dashboard'))
@@ -108,6 +112,12 @@ export default function Register() {
               <option value="B2">B2 — Upper Intermediate</option>
               <option value="C1">C1 — Advanced</option>
               <option value="C2">C2 — Proficient</option>
+            </select>
+            <select value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Why are you learning German?">
+              <option value="">Why are you learning German? (optional)</option>
+              {GOALS.map((g) => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
             </select>
             <button type="submit" className="btn btn-primary form-submit" disabled={loading}>
               {loading ? 'Creating Account...' : 'Register'}

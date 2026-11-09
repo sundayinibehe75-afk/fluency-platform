@@ -2,6 +2,7 @@
 
 Endpoints:
 - POST /bookings — student auth, create a booking
+- POST /bookings/weekly — student auth, same time every week with plan lessons
 - GET /bookings — student/admin auth, list bookings
 - GET /bookings/{id} — student/admin auth, get a single booking
 - POST /bookings/{id}/cancel — student/admin auth, cancel a booking
@@ -15,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db, require_role
 from app.models.user import User
-from app.schemas.bookings import BookingCreate, BookingReschedule, BookingResponse
+from app.schemas.bookings import (
+    BookingCreate,
+    BookingReschedule,
+    BookingResponse,
+    BookingWeekly,
+    WeeklyBookingResponse,
+)
 from app.services import booking_service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -34,6 +41,17 @@ async def create_booking(
         slot_id=body.slot_id,
         booking_type=body.booking_type,
     )
+
+
+@router.post("/weekly", response_model=WeeklyBookingResponse, status_code=201)
+async def book_weekly(
+    body: BookingWeekly,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("student")),
+) -> WeeklyBookingResponse:
+    """Book this time every week while the student's plan lessons last."""
+    result = await booking_service.book_weekly(db=db, student=current_user, slot_id=body.slot_id)
+    return WeeklyBookingResponse(**result)
 
 
 @router.get("", response_model=List[BookingResponse])
