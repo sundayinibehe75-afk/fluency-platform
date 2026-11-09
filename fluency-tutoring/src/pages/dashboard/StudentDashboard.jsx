@@ -186,20 +186,20 @@ export default function StudentDashboard() {
 
   const now = new Date()
 
-  const upcoming = bookings.filter((b) => {
-    const startAt = new Date(b.start_at || b.slot_start_at)
-    return b.status === 'confirmed' && startAt > now
-  })
+  // A lesson stays "upcoming" until it ends, so the Join button is still
+  // there for a student who arrives a few minutes late.
+  const endOf = (b) => new Date(b.end_at || b.start_at || b.slot_start_at)
 
-  const past = bookings.filter((b) => {
-    const startAt = new Date(b.start_at || b.slot_start_at)
-    return b.status === 'completed' || startAt < now
-  })
+  const upcoming = bookings
+    .filter((b) => b.status === 'confirmed' && endOf(b) > now)
+    .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
+
+  const past = bookings.filter((b) => !upcoming.includes(b) && (b.status === 'completed' || endOf(b) < now))
 
   function isWithin10Min(booking) {
+    // Joinable from 10 minutes before the start until the lesson ends
     const startAt = new Date(booking.start_at || booking.slot_start_at)
-    const diffMs = startAt - new Date()
-    return diffMs <= 10 * 60 * 1000 && diffMs > 0
+    return startAt - new Date() <= 10 * 60 * 1000 && endOf(booking) > new Date()
   }
 
   return (

@@ -120,6 +120,13 @@ function BookingsTab() {
               </td>
               <td>{formatCents(booking.price_cents, booking.currency)}</td>
               <td>
+                {booking.status === 'confirmed' &&
+                  new Date(booking.start_at) - new Date() <= 10 * 60 * 1000 &&
+                  new Date(booking.end_at) > new Date() && (
+                    <Link to={`/lessons/${booking.id}`} className="btn btn-primary btn-sm">
+                      Join
+                    </Link>
+                  )}{' '}
                 {booking.status === 'confirmed' && new Date(booking.start_at) > new Date() && (
                   <Link to={`/booking?reschedule=${booking.id}`} className="btn btn-outline-dark btn-sm">
                     Move
@@ -455,8 +462,10 @@ function AvailabilityTab() {
     let errors = []
 
     for (const time of times) {
-      const startAt = new Date(`${startDate}T${time}:00Z`).toISOString()
-      const endAt = new Date(new Date(`${startDate}T${time}:00Z`).getTime() + duration * 60000).toISOString()
+      // Times are entered in the tutor's own local time (the browser's time zone)
+      const start = new Date(`${startDate}T${time}:00`)
+      const startAt = start.toISOString()
+      const endAt = new Date(start.getTime() + duration * 60000).toISOString()
 
       const body = {
         tutor_id: tutorId,
@@ -514,7 +523,7 @@ function AvailabilityTab() {
           />
         </div>
         <div className="admin-form-group">
-          <label>Time Slots (UTC)</label>
+          <label>Time slots (your local time: {Intl.DateTimeFormat().resolvedOptions().timeZone})</label>
           {times.map((time, index) => (
             <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
               <input
