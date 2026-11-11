@@ -150,7 +150,7 @@ def send_email_later(to: str, template_name: str, context: dict) -> None:
 def _get_subject(template_name: str, context: dict) -> str:
     """Return the email subject line based on the template name."""
     subjects = {
-        "welcome": "Welcome to Fluency Tutoring!",
+        "welcome": "Welcome to Fluency German!",
         "booking_confirmation": "Your Lesson is Confirmed",
         "lesson_reminder": "Reminder: Your Lesson is Tomorrow",
         "cancellation": "Booking Cancellation Confirmation",
@@ -160,4 +160,4 @@ def _get_subject(template_name: str, context: dict) -> str:
         "weekly_confirmation": "Your Weekly Lessons Are Booked",
         "credits_expiring": "Your Lessons Expire Soon",
     }
-    return subjects.get(template_name, "Fluency Tutoring")
+    return subjects.get(template_name, "Fluency German")

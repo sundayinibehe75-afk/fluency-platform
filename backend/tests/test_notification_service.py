@@ -186,7 +186,7 @@ class TestGetSubject:
         """Each template should have a meaningful subject line."""
         from app.services.notification_service import _get_subject
 
-        assert _get_subject("welcome", {}) == "Welcome to Fluency Tutoring!"
+        assert _get_subject("welcome", {}) == "Welcome to Fluency German!"
         assert _get_subject("booking_confirmation", {}) == "Your Lesson is Confirmed"
         assert _get_subject("lesson_reminder", {}) == "Reminder: Your Lesson is Tomorrow"
         assert _get_subject("cancellation", {}) == "Booking Cancellation Confirmation"
@@ -197,4 +197,4 @@ class TestGetSubject:
         """Unknown template names should return a generic subject."""
         from app.services.notification_service import _get_subject
 
-        assert _get_subject("unknown", {}) == "Fluency Tutoring"
+        assert _get_subject("unknown", {}) == "Fluency German"

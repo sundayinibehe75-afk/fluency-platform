@@ -17,7 +17,7 @@ export default function Nav() {
 
   return (
     <nav>
-      <Link to="/" className="nav-logo">Fluency <span>Tutoring</span></Link>
+      <Link to="/" className="nav-logo">Fluency <span>German</span></Link>
       <button
         className="nav-hamburger"
         onClick={() => setMenuOpen(prev => !prev)}
