@@ -71,12 +71,8 @@ export default function LessonRoom() {
         const res = await api.get(`/bookings/${id}`)
         const data = res.data
 
-        // Ownership check: booking must belong to current user (student or tutor)
-        if (user && data.student_id !== user.id && data.tutor_id !== user.id) {
-          setForbidden(true)
-          setLoading(false)
-          return
-        }
+        // Access is checked by the server: GET /bookings/{id} only succeeds
+        // for the student who booked it or the admin (tutor), else 403.
 
         setBooking(data)
         setPhase(getLessonPhase(data.start_at, data.end_at))
@@ -127,39 +123,42 @@ export default function LessonRoom() {
   // Embed Daily.co video when phase becomes active
   useEffect(() => {
     if (phase !== 'active' || !booking?.video_room_url || !videoContainerRef.current) return
-    if (callFrameRef.current) return // Already joined
 
-    const frame = Daily.createFrame(videoContainerRef.current, {
-      url: booking.video_room_url,
-      showLeaveButton: true,
-      iframeStyle: {
-        width: '100%',
-        height: '100%',
-        border: '0',
-        borderRadius: '8px',
-      },
-    })
+    // Daily allows only one video frame per page, and destroy() finishes
+    // asynchronously. So: wait for any previous frame to close, then create
+    // ours, unless this effect was cleaned up in the meantime.
+    let cancelled = false
 
-    frame.join({ url: booking.video_room_url })
-    callFrameRef.current = frame
+    async function start() {
+      const existing = Daily.getCallInstance()
+      if (existing) await existing.destroy()
+      if (cancelled || !videoContainerRef.current) return
+
+      const frame = Daily.createFrame(videoContainerRef.current, {
+        url: booking.video_room_url,
+        showLeaveButton: true,
+        iframeStyle: {
+          width: '100%',
+          height: '100%',
+          border: '0',
+          borderRadius: '8px',
+        },
+      })
+      callFrameRef.current = frame
+      frame.join({ url: booking.video_room_url }).catch((err) => {
+        console.error('Could not join the video call:', err)
+      })
+    }
+
+    start().catch((err) => console.error('Could not start the video call:', err))
 
     return () => {
-      if (callFrameRef.current) {
-        callFrameRef.current.destroy()
-        callFrameRef.current = null
-      }
+      cancelled = true
+      const frame = callFrameRef.current
+      callFrameRef.current = null
+      if (frame) frame.destroy()
     }
-  }, [phase, booking])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (callFrameRef.current) {
-        callFrameRef.current.destroy()
-        callFrameRef.current = null
-      }
-    }
-  }, [])
+  }, [phase, booking?.video_room_url])
 
   // --- Render states ---
 

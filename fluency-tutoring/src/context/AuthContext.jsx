@@ -19,6 +19,15 @@ function decodeJwtPayload(token) {
   }
 }
 
+/**
+ * The signed-in user from a login token. The token stores the user's ID in
+ * the standard "sub" field; pages use user.id, so copy it there.
+ */
+function userFromToken(token) {
+  const payload = decodeJwtPayload(token)
+  return payload ? { ...payload, id: payload.sub } : null
+}
+
 function validStoredToken() {
   try {
     const stored = localStorage.getItem('token')
@@ -36,13 +45,12 @@ export function AuthProvider({ children }) {
   // Read the saved login synchronously, so pages that need a user don't
   // redirect away on the first render after a page refresh.
   const [token, setToken] = useState(() => validStoredToken())
-  const [user, setUser] = useState(() => (token ? decodeJwtPayload(token) : null))
+  const [user, setUser] = useState(() => (token ? userFromToken(token) : null))
 
   const login = useCallback((newToken) => {
     localStorage.setItem('token', newToken)
-    const decoded = decodeJwtPayload(newToken)
     setToken(newToken)
-    setUser(decoded)
+    setUser(userFromToken(newToken))
   }, [])
 
   const logout = useCallback(async () => {
