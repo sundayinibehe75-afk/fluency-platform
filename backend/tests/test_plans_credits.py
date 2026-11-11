@@ -466,3 +466,25 @@ async def test_trial_booking_with_real_room_update_returns_cleanly(db):
         created = await booking_service.create_booking(db, student.id, (await _slot(db, tutor)).id, "trial")
     assert created.status == "confirmed"
     assert created.video_room_url == "https://fluency.daily.co/test-room"
+
+
+async def test_deleted_slot_time_can_be_used_again(db):
+    """A slot with booking history is kept as 'removed' when deleted; it must
+    not block creating a new slot at the same time."""
+    from app.schemas.availability import SlotCreate
+    from app.services import availability_service, booking_service
+
+    admin, tutor = await _tutor(db)
+    student = await _user(db)
+    old = await _slot(db, tutor, hours_from_now=30)
+    with _quiet():
+        trial = await booking_service.create_booking(db, student.id, old.id, "trial")
+        await booking_service.cancel_booking(db, trial.id, student)
+        await availability_service.delete_slot(db, old.id, actor=admin)
+    assert old.status == "removed"
+
+    created = await availability_service.create_slots(
+        db,
+        SlotCreate(tutor_id=tutor.id, start_at=old.start_at, end_at=old.end_at, duration_minutes=60),
+    )
+    assert len(created) == 1 and created[0].status == "available"

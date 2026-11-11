@@ -450,3 +450,4 @@ async def test_booking_list_reports_reviews(db):
 
     listed = await booking_service.list_bookings(db, student)
     assert listed[0].has_review is True
+

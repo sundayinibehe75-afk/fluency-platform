@@ -47,19 +47,25 @@ async def _find_overlapping_slot(
     end_at: datetime,
     exclude_slot_id: uuid.UUID | None = None,
 ) -> AvailabilitySlot | None:
-    """Query for any existing slot that overlaps the given time range."""
+    """Return one existing slot that overlaps the given time range, or None.
+
+    Removed (deleted) slots are kept for history but no longer occupy the
+    time, so they are ignored. Several old slots can overlap, so take the
+    first instead of expecting exactly one.
+    """
     query = select(AvailabilitySlot).where(
         and_(
             AvailabilitySlot.tutor_id == tutor_id,
             AvailabilitySlot.start_at < end_at,
             AvailabilitySlot.end_at > start_at,
+            AvailabilitySlot.status != "removed",
         )
     )
     if exclude_slot_id is not None:
         query = query.where(AvailabilitySlot.id != exclude_slot_id)
 
-    result = await db.execute(query)
-    return result.scalar_one_or_none()
+    result = await db.execute(query.limit(1))
+    return result.scalars().first()
 
 
 def _raise_conflict() -> None:
