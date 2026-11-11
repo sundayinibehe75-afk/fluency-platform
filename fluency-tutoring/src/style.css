@@ -2066,3 +2066,14 @@ form.notes-editor {
   font: inherit;
   font-weight: 400;
 }
+
+.slot-preview {
+  font-size: 0.85rem;
+  color: var(--gray);
+  white-space: nowrap;
+}
+
+.slot-preview--past {
+  color: #b91c1c;
+  font-weight: 600;
+}

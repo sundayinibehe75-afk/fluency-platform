@@ -488,3 +488,17 @@ async def test_deleted_slot_time_can_be_used_again(db):
         SlotCreate(tutor_id=tutor.id, start_at=old.start_at, end_at=old.end_at, duration_minutes=60),
     )
     assert len(created) == 1 and created[0].status == "available"
+
+
+async def test_slot_in_the_past_is_rejected(db):
+    """An AM/PM mix-up (06:08 instead of 18:08) must not create a hidden slot."""
+    from app.schemas.availability import SlotCreate
+    from app.services import availability_service
+
+    _, tutor = await _tutor(db)
+    start = _now() - timedelta(hours=2)
+    with pytest.raises(HTTPException) as exc:
+        await availability_service.create_slots(
+            db, SlotCreate(tutor_id=tutor.id, start_at=start, end_at=start + timedelta(hours=1), duration_minutes=60)
+        )
+    assert exc.value.status_code == 400

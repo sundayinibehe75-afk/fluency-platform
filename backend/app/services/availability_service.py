@@ -141,6 +141,17 @@ async def create_slots(
             "recurrence_group_id": None,
         })
 
+    # A slot must start in the future (catches AM/PM mix-ups like 06:08
+    # instead of 18:08, which would otherwise be saved but never shown)
+    if slots_to_create[0]["start_at"] <= datetime.now(tz=timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "VALIDATION_ERROR",
+                "detail": "This time has already passed. Check the date and AM/PM.",
+            },
+        )
+
     # Check for overlaps and create slots
     created_slots: list[AvailabilitySlot] = []
     for slot_data in slots_to_create:

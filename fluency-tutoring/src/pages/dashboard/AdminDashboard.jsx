@@ -553,6 +553,19 @@ function AvailabilityTab() {
     setTimes(prev => [...prev, '10:00'])
   }
 
+  // Spell out the chosen time (e.g. "Wed 11 Nov, 6:08 PM") so AM/PM mix-ups
+  // are visible before saving
+  function slotPreview(date, time) {
+    if (!date || !time) return { text: '', past: false }
+    const d = new Date(`${date}T${time}:00`)
+    if (Number.isNaN(d.getTime())) return { text: '', past: false }
+    const past = d <= new Date()
+    const text = d.toLocaleString(undefined, {
+      weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+    })
+    return { text: past ? `${text} (already passed)` : text, past }
+  }
+
   function removeTime(index) {
     setTimes(prev => prev.filter((_, i) => i !== index))
   }
@@ -572,6 +585,10 @@ function AvailabilityTab() {
     for (const time of times) {
       // Times are entered in the tutor's own local time (the browser's time zone)
       const start = new Date(`${startDate}T${time}:00`)
+      if (start <= new Date()) {
+        errors.push(`${time}: this time has already passed (check AM/PM)`)
+        continue
+      }
       const startAt = start.toISOString()
       const endAt = new Date(start.getTime() + duration * 60000).toISOString()
 
@@ -596,11 +613,12 @@ function AvailabilityTab() {
     }
 
     if (totalCreated > 0) {
-      setMessage(`✅ Created ${totalCreated} slot(s) successfully!${errors.length ? ' Some failed.' : ''}`)
+      setMessage(
+        `✅ Created ${totalCreated} slot(s).` + (errors.length ? ` Not created: ${errors.join('; ')}` : '')
+      )
       fetchSlots()
-    }
-    if (errors.length > 0 && totalCreated === 0) {
-      setMessage(`❌ ${errors.join(', ')}`)
+    } else if (errors.length > 0) {
+      setMessage(`❌ ${errors.join('; ')}`)
     }
 
     setLoading(false)
@@ -641,6 +659,9 @@ function AvailabilityTab() {
                 required
                 style={{ flex: 1 }}
               />
+              <span className={`slot-preview${slotPreview(startDate, time).past ? ' slot-preview--past' : ''}`}>
+                {slotPreview(startDate, time).text}
+              </span>
               {times.length > 1 && (
                 <button type="button" onClick={() => removeTime(index)} className="btn btn-cancel btn-sm">✕</button>
               )}
