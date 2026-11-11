@@ -217,6 +217,8 @@ async def create_booking(
     if booking_status == "confirmed":
         # Free trial and plan lessons need no payment: email + video room now
         await notify_booking_confirmed(db, booking.id, send_email=notify)
+        # The video room link was just saved; load the fresh row before replying
+        await db.refresh(booking)
 
     return _booking_to_response(booking, slot)
 

@@ -429,3 +429,40 @@ async def test_time_off_blocks_free_slots_and_reports_booked_ones(db):
 
     await availability_service.unblock_time(db, tutor.id, start, end)
     assert free.status == "available"
+
+
+# ---------------------------------------------------------------------------
+# Regression: a real (non-mocked) video room update must not break the reply
+# ---------------------------------------------------------------------------
+
+class _FakeDailyResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"url": "https://fluency.daily.co/test-room"}
+
+
+class _FakeAsyncClient:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, *args, **kwargs):
+        return _FakeDailyResponse()
+
+
+async def test_trial_booking_with_real_room_update_returns_cleanly(db):
+    """Daily.co saving the room link updates the row (updated_at changes).
+    Building the response afterwards used to fail with MissingGreenlet."""
+    from app.services import booking_service
+
+    _, tutor = await _tutor(db)
+    student = await _user(db)
+    with patch("app.services.video_service.httpx.AsyncClient", _FakeAsyncClient), \
+         patch("app.services.notification_service.send_email_later"):
+        created = await booking_service.create_booking(db, student.id, (await _slot(db, tutor)).id, "trial")
+    assert created.status == "confirmed"
+    assert created.video_room_url == "https://fluency.daily.co/test-room"

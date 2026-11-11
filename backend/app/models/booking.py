@@ -88,6 +88,12 @@ class Booking(Base):
         "Review", back_populates="booking", uselist=False
     )
 
+    # Fetch database-generated values (e.g. updated_at, set by the database on
+    # every update) straight after each flush. Without this, reading them later
+    # triggers a lazy reload, which async SQLAlchemy does not allow
+    # (MissingGreenlet).
+    __mapper_args__ = {"eager_defaults": True}
+
     __table_args__ = (
         Index("bookings_student_idx", "student_id"),
         Index("bookings_tutor_idx", "tutor_id"),
