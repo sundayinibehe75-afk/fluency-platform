@@ -2077,3 +2077,76 @@ form.notes-editor {
   color: #b91c1c;
   font-weight: 600;
 }
+
+/* ---------- Lesson room (full-window classroom) ---------- */
+.lesson-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: #111;
+}
+
+.lesson-bar {
+  height: 44px;
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1rem;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.lesson-bar-back {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lesson-bar-title {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-bar-title > span {
+  color: var(--red);
+}
+
+.lesson-bar-title small {
+  font-weight: 400;
+  color: #bbb;
+}
+
+.lesson-bar-btn {
+  background: transparent;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lesson-bar-btn:hover {
+  border-color: #fff;
+}
+
+.lesson-video {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .lesson-bar-title small {
+    display: none;
+  }
+}

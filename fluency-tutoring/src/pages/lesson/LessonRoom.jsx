@@ -59,7 +59,24 @@ export default function LessonRoom() {
   const [countdown, setCountdown] = useState('')
 
   const videoContainerRef = useRef(null)
+  const stageRef = useRef(null)
   const callFrameRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Keep the button label in sync when the user leaves full screen with Esc
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.()
+    } else {
+      stageRef.current?.requestFullscreen?.().catch(() => {})
+    }
+  }
   const countdownIntervalRef = useRef(null)
 
   // Fetch booking detail
@@ -137,6 +154,8 @@ export default function LessonRoom() {
       const frame = Daily.createFrame(videoContainerRef.current, {
         url: booking.video_room_url,
         showLeaveButton: true,
+        // A full-screen button on each video tile, e.g. to enlarge a shared PDF
+        showFullscreenButton: true,
         iframeStyle: {
           width: '100%',
           height: '100%',
@@ -291,29 +310,22 @@ export default function LessonRoom() {
   }
 
   // phase === 'active'
+  // The classroom fills the whole window (no site navigation or page
+  // padding), so video and screen shares get as much space as possible.
+  const dashboardPath = user?.role === 'admin' ? '/admin' : '/dashboard'
   return (
-    <>
-      <Nav />
-      <section
-        style={{
-          paddingTop: '5rem',
-          height: 'calc(100vh - 5rem)',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div
-          ref={videoContainerRef}
-          style={{
-            flex: 1,
-            width: '100%',
-            background: '#111',
-            borderRadius: '0',
-            overflow: 'hidden',
-          }}
-          aria-label="Video lesson room"
-        />
-      </section>
-    </>
+    <div className="lesson-stage" ref={stageRef}>
+      <div className="lesson-bar">
+        <Link to={dashboardPath} className="lesson-bar-back">← Dashboard</Link>
+        <span className="lesson-bar-title">
+          Fluency <span>German</span>
+          {booking?.start_at && <small> · {formatDate(booking.start_at)}</small>}
+        </span>
+        <button type="button" className="lesson-bar-btn" onClick={toggleFullscreen}>
+          {isFullscreen ? 'Exit full screen' : 'Full screen'}
+        </button>
+      </div>
+      <div ref={videoContainerRef} className="lesson-video" aria-label="Video lesson room" />
+    </div>
   )
 }
