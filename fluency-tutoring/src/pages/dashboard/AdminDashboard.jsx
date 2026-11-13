@@ -425,16 +425,20 @@ function StudentCredits({ student, onChanged }) {
             {grants.map((g) => {
               const expired = new Date(g.expires_at) <= now
               return (
-                <tr key={g.id} className={expired ? 'admin-row-muted' : ''}>
+                <tr key={g.id} className={expired || g.total === 0 ? 'admin-row-muted' : ''}>
                   <td>{g.source === 'subscription' ? 'Plan' : g.source === 'package' ? 'Package' : 'Added by you'}</td>
                   <td>{g.used}/{g.total}</td>
                   <td>{expired ? 0 : g.remaining}</td>
                   <td>{formatDate(g.expires_at)}{expired && ' (expired)'}</td>
                   <td>{g.note || ''}</td>
                   <td className="admin-credits-actions">
-                    <button className="btn btn-outline-dark btn-sm" onClick={() => extend(g)}>
-                      Extend
-                    </button>
+                    {g.total === 0 ? (
+                      <span className="admin-muted">Removed</span>
+                    ) : (
+                      <button className="btn btn-outline-dark btn-sm" onClick={() => extend(g)}>
+                        Extend
+                      </button>
+                    )}
                     {!expired && g.remaining > 0 && (
                       <button className="btn btn-cancel btn-sm" onClick={() => remove(g)}>
                         Remove
