@@ -141,6 +141,7 @@ jobs:
             "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
              cd ~/fluency-platform && git pull origin main && \
              export IMAGE_TAG=${{ github.sha }} && \
+             (grep -v '^IMAGE_TAG=' .env > .env.tmp; echo \"IMAGE_TAG=${{ github.sha }}\" >> .env.tmp; cat .env.tmp > .env; rm .env.tmp) && \
              docker compose pull api frontend && \
              docker logout ghcr.io && \
              docker compose up -d --no-build"
