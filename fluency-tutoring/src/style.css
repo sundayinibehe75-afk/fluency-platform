@@ -2525,3 +2525,111 @@ form.admin-rate {
   background: var(--red);
   color: #fff;
 }
+
+/* Messages page: undo the site-wide form/textarea defaults (stacked form,
+   130px-tall text box) that squeezed the conversation */
+form.inbox-send-form {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.inbox-send-textarea {
+  width: auto;
+  min-height: 0;
+  max-height: 8rem;
+  border-radius: 8px;
+}
+
+.inbox-split {
+  height: calc(100dvh - 11.5rem);
+  min-height: 420px;
+}
+
+.inbox-messages-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inbox-back {
+  display: none;
+  border: 0;
+  background: transparent;
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  cursor: pointer;
+  color: var(--black);
+}
+
+@media (max-width: 768px) {
+  .inbox-page {
+    padding-top: 4.25rem;
+  }
+
+  .inbox-container {
+    padding: 1rem 0.75rem;
+  }
+
+  .inbox-title {
+    margin-bottom: 0.75rem;
+  }
+
+  /* Phones: the list of conversations, or one conversation filling the screen */
+  .inbox-split,
+  .inbox-split.has-selection {
+    grid-template-columns: 1fr;
+    height: calc(100dvh - 9rem);
+    min-height: 360px;
+  }
+
+  .inbox-threads {
+    max-height: none;
+    border-bottom: none;
+  }
+
+  .inbox-split.has-selection .inbox-threads {
+    display: none;
+  }
+
+  .inbox-split:not(.has-selection) .inbox-messages {
+    display: none;
+  }
+
+  .inbox-messages {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .inbox-back {
+    display: inline-block;
+  }
+
+  form.inbox-send-form {
+    padding: 0.6rem 0.75rem;
+  }
+}
+
+.contact-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-whatsapp {
+  background: #25d366;
+  color: #fff;
+  border: 2px solid #25d366;
+}
+
+.btn-whatsapp:hover {
+  background: #1ebe5b;
+  border-color: #1ebe5b;
+}
+
+/* The conversation panel is a <section>: drop the page-section spacing */
+section.inbox-messages {
+  padding: 0;
+}

@@ -24,6 +24,13 @@ export default function Inbox() {
   const [error, setError] = useState(null)
 
   const messagesEndRef = useRef(null)
+  const listRef = useRef(null)
+
+  // Scroll the conversation (not the whole page) to the newest message
+  function scrollToNewest(smooth = true) {
+    const list = listRef.current
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }
 
   // Fetch threads
   useEffect(() => {
@@ -150,7 +157,7 @@ export default function Inbox() {
 
       // Scroll to bottom
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        scrollToNewest()
       }, 100)
     } catch (err) {
       console.error('Failed to send message:', err)
@@ -167,7 +174,7 @@ export default function Inbox() {
   // Scroll to bottom when messages load
   useEffect(() => {
     if (messages.length > 0 && page === 1) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      scrollToNewest(false)
     }
   }, [messages, page])
 
@@ -205,7 +212,7 @@ export default function Inbox() {
             </div>
           )}
 
-          <div className="inbox-split">
+          <div className={`inbox-split${selectedThread ? ' has-selection' : ''}`}>
             {/* Thread List Panel */}
             <aside className="inbox-threads" aria-label="Message threads">
               {threadsLoading ? (
@@ -268,12 +275,20 @@ export default function Inbox() {
               ) : (
                 <>
                   <div className="inbox-messages-header">
+                    <button
+                      type="button"
+                      className="inbox-back"
+                      onClick={() => setSelectedThread(null)}
+                      aria-label="Back to all conversations"
+                    >
+                      ←
+                    </button>
                     <h2 className="inbox-messages-title">
                       {selectedThread.other_user_name}
                     </h2>
                   </div>
 
-                  <div className="inbox-messages-list">
+                  <div className="inbox-messages-list" ref={listRef}>
                     {messagesLoading && messages.length === 0 ? (
                       <div className="inbox-loading">
                         <div className="loading-spinner" aria-label="Loading messages"></div>

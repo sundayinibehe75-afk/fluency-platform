@@ -8,6 +8,7 @@ Functions:
 """
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import HTTPException, status
@@ -249,9 +250,10 @@ async def send_message(
     db.add(message)
     await db.flush()
 
-    # Log that a delayed email notification should be scheduled (5-min delay)
+    # The recipient is emailed if it is still unread after EMAIL_DELAY
+    # (notify_unread_messages, a background job)
     logger.info(
-        "Message sent — schedule delayed email notification (5 min)",
+        "Message sent",
         extra={
             "message_id": str(message.id),
             "sender_id": str(sender_id),
@@ -291,3 +293,75 @@ async def mark_read(
     await db.flush()
 
     return MessageResponse.model_validate(message)
+
+
+# ---------------------------------------------------------------------------
+# Email alerts for unread messages (background job, every few minutes)
+# ---------------------------------------------------------------------------
+
+EMAIL_DELAY_MINUTES = 5
+
+
+async def notify_unread_messages(db: AsyncSession) -> int:
+    """Email people about messages still unread EMAIL_DELAY_MINUTES after
+    they were sent: one email per recipient, naming who wrote and showing the
+    newest message. Messages read in time (e.g. in the lesson chat) are never
+    emailed. Returns the number of emails sent.
+    """
+    import html
+    from datetime import timedelta
+
+    from app.core.config import settings
+    from app.models.user import User
+    from app.services.notification_service import send_email_later
+
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(minutes=EMAIL_DELAY_MINUTES)
+    pending = (
+        await db.execute(
+            select(Message)
+            .where(
+                Message.is_read.is_(False),
+                Message.email_notified.is_(False),
+                Message.sent_at <= cutoff,
+            )
+            .order_by(Message.sent_at)
+        )
+    ).scalars().all()
+
+    by_recipient: dict = {}
+    for message in pending:
+        by_recipient.setdefault(message.recipient_id, []).append(message)
+
+    sent = 0
+    for recipient_id, messages in by_recipient.items():
+        for message in messages:
+            message.email_notified = True
+        recipient = await db.get(User, recipient_id)
+        if recipient is None or not recipient.email:
+            continue
+        senders = []
+        for message in messages:
+            sender = await db.get(User, message.sender_id)
+            name = f"{sender.first_name} {sender.last_name}".strip() if sender else "Someone"
+            if name not in senders:
+                senders.append(name)
+        newest = messages[-1].body
+        preview = html.escape(newest[:300] + ("…" if len(newest) > 300 else "")).replace("\n", "<br>")
+        count = len(messages)
+        who = ", ".join(html.escape(n) for n in senders)
+        send_email_later(
+            to=recipient.email,
+            template_name="plan_notice",
+            context={
+                "subject": f"New message from {senders[0]}" if len(senders) == 1 else "New messages on Fluency German",
+                "heading": "You have a new message" if count == 1 else f"You have {count} new messages",
+                "first_name": html.escape(recipient.first_name or "there"),
+                "body_text": f"<strong>{who}</strong> wrote:<br><br>"
+                             f"<em style=\"color:#4b5563\">{preview}</em>",
+                "button_label": "Reply",
+                "button_url": f"{settings.frontend_url}/messages",
+            },
+        )
+        sent += 1
+    await db.flush()
+    return sent

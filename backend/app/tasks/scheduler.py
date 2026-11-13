@@ -2,6 +2,7 @@
 
 - every minute:   release unpaid bookings whose 15-minute reservation ended
 - every 5 min:    mark confirmed lessons that have finished as 'completed'
+- every 2 min:    email people about messages unread for 5 minutes
 - every hour:     send 24-hour lesson reminder emails, and warn students whose
                   unbooked plan lessons expire within 5 days; renew Paystack
                   plans that are due (with reminder and failure emails)
@@ -47,12 +48,14 @@ def start_background_jobs() -> list[asyncio.Task]:
         expire_pending_bookings,
     )
     from app.services.credit_service import send_expiry_reminders
+    from app.services.messaging_service import notify_unread_messages
     from app.services.paystack_service import renew_due_plans
     from app.tasks.reminder_task import send_lesson_reminders
 
     return [
         asyncio.create_task(_every(60, "expire_pending_bookings", expire_pending_bookings)),
         asyncio.create_task(_every(300, "complete_finished_bookings", complete_finished_bookings)),
+        asyncio.create_task(_every(120, "notify_unread_messages", notify_unread_messages)),
         asyncio.create_task(_every(3600, "send_lesson_reminders", send_lesson_reminders)),
         asyncio.create_task(_every(3600, "send_expiry_reminders", send_expiry_reminders)),
         asyncio.create_task(_every(3600, "renew_due_plans", renew_due_plans)),

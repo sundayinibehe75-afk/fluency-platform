@@ -227,3 +227,34 @@ async def test_late_payment_gets_its_time_back_after_it_was_joined(db):
     assert row.status == "confirmed"
     remaining = [o.start_at for o in await availability_service.list_available_slots(db, tutor.id, 30)]
     assert remaining == [t + timedelta(minutes=30)]
+
+
+# ---------------------------------------------------------------------------
+# Email alerts for unread messages
+# ---------------------------------------------------------------------------
+
+async def test_unread_messages_are_emailed_once_after_five_minutes(db):
+    from unittest.mock import patch
+
+    from app.models.message import Message
+    from app.services import messaging_service
+
+    tutor_user, _ = await _tutor(db)
+    student = await _user(db)
+    old = _now() - timedelta(minutes=6)
+    db.add_all([
+        Message(sender_id=student.id, recipient_id=tutor_user.id, body="Hallo! Can I book a trial?", sent_at=old),
+        Message(sender_id=student.id, recipient_id=tutor_user.id, body="Line one\nLine <b>two</b>", sent_at=old),
+        Message(sender_id=tutor_user.id, recipient_id=student.id, body="Just sent", sent_at=_now()),  # too new
+        Message(sender_id=tutor_user.id, recipient_id=student.id, body="Read in class", sent_at=old, is_read=True),
+    ])
+    await db.flush()
+
+    with patch("app.services.notification_service.send_email_later") as email:
+        assert await messaging_service.notify_unread_messages(db) == 1
+        assert await messaging_service.notify_unread_messages(db) == 0  # never twice
+    kwargs = email.call_args.kwargs
+    assert kwargs["to"] == tutor_user.email
+    assert kwargs["context"]["heading"] == "You have 2 new messages"
+    assert kwargs["context"]["subject"] == "New message from Student Test"
+    assert "Line one<br>Line &lt;b&gt;two&lt;/b&gt;" in kwargs["context"]["body_text"]

@@ -1,4 +1,9 @@
+import { Link } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+
 export default function Hero() {
+  const { user } = useAuth()
+  const trial = '/booking?type=trial'
   return (
     <section
       id="hero"
@@ -11,7 +16,9 @@ export default function Hero() {
       <div className="hero-content">
         <h1>Learn German with<br /><span>Confidence & Fluency</span></h1>
         <p>Personalized one-on-one German lessons for all levels. Whether you're a complete beginner or looking to polish your skills, I'll guide you every step of the way.</p>
-        <a href="#contact" className="btn btn-primary">Book a Free Intro Lesson</a>
+        <Link to={user ? trial : `/register?next=${encodeURIComponent(trial)}`} className="btn btn-primary">
+          Book a Free Intro Lesson
+        </Link>
         <a href="#offerings" className="btn btn-outline">See What I Offer</a>
       </div>
     </section>

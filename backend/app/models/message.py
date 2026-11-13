@@ -30,6 +30,10 @@ class Message(Base):
     is_read: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # True once the recipient was emailed about it (see notify_unread_messages)
+    email_notified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
