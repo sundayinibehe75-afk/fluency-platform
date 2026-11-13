@@ -14,8 +14,9 @@ import LessonChat from '../../components/LessonChat'
  * @returns {'waiting' | 'active' | 'ended'}
  */
 /**
- * The lesson clock in the top bar. It only informs; the call keeps running
- * after the planned end (the video room closes 30 minutes later).
+ * The lesson clock in the top bar: a stopwatch from 0:00 to the lesson
+ * length (60:00), which keeps counting after that. It only informs; the call
+ * keeps going (the video room closes 30 minutes after the planned end).
  */
 function lessonClock(startAt, endAt, now) {
   const start = new Date(startAt).getTime()
@@ -24,12 +25,15 @@ function lessonClock(startAt, endAt, now) {
     const total = Math.max(0, Math.floor(ms / 1000))
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
   }
+  const length = fmt(end - start)
   if (now < start) return { text: `Starts in ${fmt(start - now)}`, state: 'before' }
   if (now < end) {
-    const left = end - now
-    return { text: `${fmt(left)} left`, state: left <= 5 * 60 * 1000 ? 'soon' : 'running' }
+    return {
+      text: `${fmt(now - start)} / ${length}`,
+      state: end - now <= 5 * 60 * 1000 ? 'soon' : 'running',
+    }
   }
-  return { text: `Time's up · +${fmt(now - end)}`, state: 'over' }
+  return { text: `${fmt(now - start)} · Time's up`, state: 'over' }
 }
 
 function getLessonPhase(startAt, endAt) {
