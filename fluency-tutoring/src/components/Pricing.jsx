@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import { getErrorMessage } from '../utils/errors'
 import { nairaHint, usePaymentConfig } from '../hooks/usePaymentConfig'
 import { useBackForwardReset } from '../hooks/useBackForwardReset'
+import { useT } from '../i18n/LanguageContext'
 
 // Shown if the prices can't be loaded; the server's /api/plans is the source of truth
 const FALLBACK = [
@@ -32,6 +33,8 @@ export default function Pricing() {
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
   const payConfig = usePaymentConfig()
+  const { t } = useT()
+  const naira = (cents) => nairaHint(payConfig, cents) && t('pricing.naira', { amount: nairaHint(payConfig, cents) })
   useBackForwardReset(() => setBusy(null))
   // Paystack: the student chooses whether the plan renews. Stripe: always renews.
   const studentChooses = payConfig?.provider === 'paystack'
@@ -55,13 +58,13 @@ export default function Pricing() {
   async function choosePlan(plan) {
     setError('')
     if (!user) return navigate('/register')
-    if (user.role !== 'student') return setError('Plans are for student accounts.')
+    if (user.role !== 'student') return setError(t('pricing.err.studentOnly'))
     try {
       setBusy(plan.product_key)
       const res = await api.post('/subscriptions/checkout', { product_key: plan.product_key, auto_renew: studentChooses && renewChoice })
       window.location.href = res.data.session_url
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not start checkout. Please try again.'))
+      setError(getErrorMessage(err, t('pricing.err.checkout')))
       setBusy(null)
     }
   }
@@ -69,13 +72,11 @@ export default function Pricing() {
   return (
     <section id="pricing">
       <div className="container">
-        <p className="section-label">Pricing</p>
-        <h2 className="section-title">Simple, Transparent Rates</h2>
-        <p className="section-sub">
-          One-to-one lessons of 30 or 60 minutes. Start with a free 60-minute trial lesson.
-        </p>
+        <p className="section-label">{t('pricing.label')}</p>
+        <h2 className="section-title">{t('pricing.title')}</h2>
+        <p className="section-sub">{t('pricing.sub')}</p>
 
-        <div className="pricing-length" role="group" aria-label="Lesson length">
+        <div className="pricing-length" role="group" aria-label={t('pricing.lengthGroup')}>
           {[30, 60].map((m) => (
             <button
               key={m}
@@ -84,61 +85,55 @@ export default function Pricing() {
               onClick={() => setLength(m)}
               aria-pressed={length === m}
             >
-              {m}-minute lessons
+              {t('pricing.lengthButton', { m })}
             </button>
           ))}
         </div>
 
         <div className="pricing-grid">
           <div className="pricing-card">
-            <h3>Free Trial</h3>
+            <h3>{t('pricing.trial.title')}</h3>
             <div className="price"><sup>$</sup>0</div>
-            <p className="price-period">one 60-min lesson</p>
+            <p className="price-period">{t('pricing.trial.period')}</p>
             <ul className="pricing-features">
-              <li>Meet your tutor</li>
-              <li>Level check and goals</li>
-              <li>One per student</li>
+              <li>{t('pricing.trial.f1')}</li>
+              <li>{t('pricing.trial.f2')}</li>
+              <li>{t('pricing.trial.f3')}</li>
             </ul>
             <button className="btn btn-primary" onClick={() => go('/booking?type=trial')}>
-              Book free trial
+              {t('pricing.trial.cta')}
             </button>
           </div>
 
           {single && (
             <div className="pricing-card">
-              <h3>Single Lesson</h3>
+              <h3>{t('pricing.single.title')}</h3>
               <div className="price"><sup>$</sup>{dollars(single.price_cents)}</div>
-              <p className="price-period">per {length}-min lesson</p>
-              {nairaHint(payConfig, single.price_cents) && (
-                <span className="price-naira">{nairaHint(payConfig, single.price_cents)}, charged in naira</span>
-              )}
+              <p className="price-period">{t('pricing.single.period', { m: length })}</p>
+              {naira(single.price_cents) && <span className="price-naira">{naira(single.price_cents)}</span>}
               <ul className="pricing-features">
-                <li>Pay as you go</li>
-                <li>Custom lesson plan</li>
-                <li>Free cancellation 12h+ before</li>
+                <li>{t('pricing.single.f1')}</li>
+                <li>{t('pricing.single.f2')}</li>
+                <li>{t('pricing.single.f3')}</li>
               </ul>
               <button className="btn btn-primary" onClick={() => go(`/booking?type=single&minutes=${length}`)}>
-                Book a lesson
+                {t('pricing.single.cta')}
               </button>
             </div>
           )}
         </div>
 
-        <h3 className="pricing-plans-title">Monthly plans</h3>
+        <h3 className="pricing-plans-title">{t('pricing.plans.title')}</h3>
         <p className="section-sub pricing-plans-sub">
-          Choose how many lessons a week and pick your own times.{' '}
-          {studentChooses
-            ? 'Pay for a month of lessons. Unused lessons expire after 30 days, and we remind you before they do.'
-            : autoRenew
-              ? 'Renews monthly until you cancel. Unused lessons expire at the end of each month.'
-              : 'Pay once for a month of lessons, with no automatic charges. Unused lessons expire after 30 days, and we remind you before they do.'}
+          {t('pricing.plans.intro')}{' '}
+          {t(studentChooses ? 'pricing.plans.choose' : autoRenew ? 'pricing.plans.renews' : 'pricing.plans.once')}
         </p>
         {studentChooses && (
           <label className="pricing-renew">
             <input type="checkbox" checked={renewChoice} onChange={(e) => setRenewChoice(e.target.checked)} />
             <span>
-              <strong>Renew automatically each month</strong>
-              <small>Your card is charged when the month ends. We email you 3 days before, and you can turn it off anytime in your dashboard.</small>
+              <strong>{t('pricing.renew.title')}</strong>
+              <small>{t('pricing.renew.note')}</small>
             </span>
           </label>
         )}
@@ -149,24 +144,22 @@ export default function Pricing() {
             const perLesson = p.price_cents / p.lessons_per_month
             return (
               <div className={`pricing-card${perWeek === 3 ? ' featured' : ''}`} key={p.product_key}>
-                {perWeek === 3 && <span className="featured-tag">Most Popular</span>}
-                <h3>{perWeek}× a week</h3>
+                {perWeek === 3 && <span className="featured-tag">{t('pricing.popular')}</span>}
+                <h3>{t('pricing.plan.perWeek', { n: perWeek })}</h3>
                 <div className="price"><sup>$</sup>{dollars(p.price_cents)}</div>
-                <p className="price-period">per month · {p.lessons_per_month} × {length} min</p>
-                {nairaHint(payConfig, p.price_cents) && (
-                  <span className="price-naira">{nairaHint(payConfig, p.price_cents)}, charged in naira</span>
-                )}
+                <p className="price-period">{t('pricing.plan.period', { n: p.lessons_per_month, m: length })}</p>
+                {naira(p.price_cents) && <span className="price-naira">{naira(p.price_cents)}</span>}
                 <ul className="pricing-features">
-                  <li>${dollars(perLesson)} per lesson</li>
-                  <li>Reschedule up to 12h before</li>
-                  <li>{autoRenew ? 'Renews monthly, cancel anytime' : 'No automatic renewal'}</li>
+                  <li>{t('pricing.plan.perLesson', { price: `$${dollars(perLesson)}` })}</li>
+                  <li>{t('pricing.plan.reschedule')}</li>
+                  <li>{t(autoRenew ? 'pricing.plan.renews' : 'pricing.plan.noRenew')}</li>
                 </ul>
                 <button
                   className="btn btn-primary"
                   onClick={() => choosePlan(p)}
                   disabled={busy !== null}
                 >
-                  {busy === p.product_key ? 'Opening checkout…' : autoRenew ? 'Choose plan' : 'Buy this month'}
+                  {t(busy === p.product_key ? 'pricing.plan.opening' : autoRenew ? 'pricing.plan.choose' : 'pricing.plan.buy')}
                 </button>
               </div>
             )

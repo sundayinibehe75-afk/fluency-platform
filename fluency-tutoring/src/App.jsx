@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { LanguageProvider } from './i18n/LanguageContext'
 import { NotificationProvider } from './context/NotificationContext'
 import Home from './pages/Home'
 import Register from './pages/auth/Register'
@@ -18,6 +19,7 @@ import LessonNotes from './pages/notes/LessonNotes'
 
 export default function App() {
   return (
+    <LanguageProvider>
     <AuthProvider>
       <NotificationProvider>
         <Routes>
@@ -38,5 +40,6 @@ export default function App() {
         </Routes>
       </NotificationProvider>
     </AuthProvider>
+    </LanguageProvider>
   )
 }

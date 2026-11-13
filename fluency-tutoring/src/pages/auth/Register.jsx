@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/LanguageContext'
 import { useState } from 'react'
 import { useNavigate, Link, Navigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
@@ -20,6 +21,7 @@ export default function Register() {
 
   const api = useApi()
   const { user, login } = useAuth()
+  const { t } = useT()
   const navigate = useNavigate()
 
   // If already logged in, redirect away
@@ -60,13 +62,13 @@ export default function Register() {
       <Nav />
       <section id="contact" style={{ paddingTop: '7rem' }}>
         <div className="container" style={{ maxWidth: '500px' }}>
-          <p className="section-label">Join Us</p>
-          <h2 className="section-title">Create Your Account</h2>
+          <p className="section-label">{t('register.label')}</p>
+          <h2 className="section-title">{t('register.title')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-row">
               <input
                 type="text"
-                placeholder="First Name"
+                placeholder={t('register.first')}
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 required
@@ -74,7 +76,7 @@ export default function Register() {
               />
               <input
                 type="text"
-                placeholder="Last Name"
+                placeholder={t('register.last')}
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 required
@@ -83,7 +85,7 @@ export default function Register() {
             </div>
             <input
               type="email"
-              placeholder="Email Address"
+              placeholder={t('auth.email')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -91,7 +93,7 @@ export default function Register() {
             />
             <input
               type="password"
-              placeholder="Password (min. 8 characters)"
+              placeholder={t('register.passwordMin')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -104,30 +106,26 @@ export default function Register() {
               required
               aria-label="CEFR level"
             >
-              <option value="" disabled>Select Your CEFR Level</option>
-              <option value="A0">A0 — No experience</option>
-              <option value="A1">A1 — Beginner</option>
-              <option value="A2">A2 — Elementary</option>
-              <option value="B1">B1 — Intermediate</option>
-              <option value="B2">B2 — Upper Intermediate</option>
-              <option value="C1">C1 — Advanced</option>
-              <option value="C2">C2 — Proficient</option>
+              <option value="" disabled>{t('register.level')}</option>
+              {['A0', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => (
+                <option key={level} value={level}>{t(`level.${level}`)}</option>
+              ))}
             </select>
             <select value={goal} onChange={(e) => setGoal(e.target.value)} aria-label="Why are you learning German?">
-              <option value="">Why are you learning German? (optional)</option>
+              <option value="">{t('register.goal')}</option>
               {GOALS.map((g) => (
-                <option key={g.value} value={g.value}>{g.label}</option>
+                <option key={g.value} value={g.value}>{t(`goal.${g.value}`)}</option>
               ))}
             </select>
             <button type="submit" className="btn btn-primary form-submit" disabled={loading}>
-              {loading ? 'Creating Account...' : 'Register'}
+              {loading ? t('register.loading') : t('register.submit')}
             </button>
             {error && (
               <p style={{ color: '#cc0000', fontSize: '0.95rem', paddingTop: '0.5rem' }}>{error}</p>
             )}
           </form>
           <p style={{ marginTop: '1.5rem', color: '#666', fontSize: '0.95rem' }}>
-            Already have an account? <Link to={`/login${window.location.search}`} style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>Log in</Link>
+            {t('register.haveAccount')} <Link to={`/login${window.location.search}`} style={{ color: '#cc0000', textDecoration: 'none', fontWeight: 600 }}>{t('register.login')}</Link>
           </p>
         </div>
       </section>

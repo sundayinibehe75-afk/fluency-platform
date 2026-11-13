@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useT } from '../i18n/LanguageContext'
 
 export default function Hero() {
   const { user } = useAuth()
+  const { t, lang } = useT()
   const trial = '/booking?type=trial'
   return (
     <section
@@ -14,12 +16,13 @@ export default function Hero() {
       }}
     >
       <div className="hero-content">
-        <h1>Learn German with<br /><span>Confidence & Fluency</span></h1>
-        <p>Personalized one-on-one German lessons for all levels. Whether you're a complete beginner or looking to polish your skills, I'll guide you every step of the way.</p>
+        <h1>{t('hero.title1')}<br /><span>{t('hero.title2')}</span></h1>
+        <p>{t('hero.text')}</p>
         <Link to={user ? trial : `/register?next=${encodeURIComponent(trial)}`} className="btn btn-primary">
-          Book a Free Intro Lesson
+          {t('hero.cta')}
         </Link>
-        <a href="#offerings" className="btn btn-outline">See What I Offer</a>
+        <a href="#offerings" className="btn btn-outline">{t('hero.cta2')}</a>
+        {lang !== 'en' && <p className="hero-lesson-language">{t('hero.lessonLanguage')}</p>}
       </div>
     </section>
   )

@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useT } from '../i18n/LanguageContext'
 
-const WHATSAPP = 'https://wa.me/2349129534727?text=' +
-  encodeURIComponent("Hi! I'm interested in German lessons. Can we chat?")
+const WHATSAPP_NUMBER = '2349129534727'
 
 /**
  * Contact: messages go through the site's own inbox (so every conversation
@@ -11,28 +11,28 @@ const WHATSAPP = 'https://wa.me/2349129534727?text=' +
  */
 export default function Contact() {
   const { user } = useAuth()
+  const { t } = useT()
+  const whatsapp = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(t('contact.whatsappText'))}`
   const messagesLink = user ? '/messages' : `/register?next=${encodeURIComponent('/messages')}`
 
   return (
     <section id="contact">
       <div className="container" style={{ textAlign: 'center' }}>
-        <p className="section-label">Get in Touch</p>
-        <h2 className="section-title">Ready to Start Learning?</h2>
+        <p className="section-label">{t('contact.label')}</p>
+        <h2 className="section-title">{t('contact.title')}</h2>
         <p className="section-sub" style={{ margin: '0 auto 2rem' }}>
-          Have questions or want to book your free introductory lesson? Message me on this site
-          {user ? '' : ' (create a free account in a minute)'} or on WhatsApp, and I'll get back to
-          you within 24 hours.
+          {t('contact.text', { account: user ? '' : t('contact.account') })}
         </p>
         <div className="contact-actions">
           <Link to={messagesLink} className="btn btn-primary">
-            Send me a message
+            {t('contact.message')}
           </Link>
-          <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
-            Chat on WhatsApp
+          <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
+            {t('contact.whatsapp')}
           </a>
         </div>
         <div style={{ marginTop: '1.5rem', color: 'var(--gray)', fontSize: '0.95rem' }}>
-          <span>🕐 Response within 24 hours</span>
+          <span>{t('contact.response')}</span>
         </div>
       </div>
     </section>

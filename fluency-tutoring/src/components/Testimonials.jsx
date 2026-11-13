@@ -1,3 +1,4 @@
+import { useT } from '../i18n/LanguageContext'
 const testimonials = [
   {
     text: "I passed my B2 exam! Emmanuel is a lovely teacher. He is patient, kind and gently improves my mistakes. 10/10",
@@ -38,13 +39,14 @@ const testimonials = [
 ]
 
 export default function Testimonials() {
+  const { t } = useT()
   return (
     <section id="testimonials">
       <div className="container">
-        <p className="section-label">Student Reviews</p>
-        <h2 className="section-title">What My Students Say</h2>
+        <p className="section-label">{t('reviews.label')}</p>
+        <h2 className="section-title">{t('reviews.title')}</h2>
         <p className="section-sub" style={{ color: '#ccc', marginBottom: '0.5rem' }}>
-          4.8 ★ average from 46 verified reviews on Preply
+          {t('reviews.sub')}
         </p>
         <div className="testimonials-grid">
           {testimonials.map((t) => (

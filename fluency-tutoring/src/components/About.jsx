@@ -1,4 +1,7 @@
+import { useT } from '../i18n/LanguageContext'
+
 export default function About() {
+  const { t } = useT()
   return (
     <section id="about">
       <div className="container">
@@ -6,25 +9,25 @@ export default function About() {
           <div className="about-image" role="img" aria-label="Emmanuel Sunday - German Tutor">
             <img
               src="/tutor-photo.jpg"
-              alt="Emmanuel Sunday - Professional German Tutor"
+              alt={t('about.photoAlt')}
               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
               loading="lazy"
             />
           </div>
           <div className="about-text">
-            <p className="section-label">About Me</p>
-            <h2 className="section-title">Your Guide to the German Language</h2>
+            <p className="section-label">{t('about.label')}</p>
+            <h2 className="section-title">{t('about.title')}</h2>
             <p style={{ fontWeight: 600, color: 'var(--black)', marginBottom: '0.5rem' }}>
-              Emmanuel Sunday is a highly qualified tutor with a verified teaching certificate.
+              {t('about.lead')}
             </p>
-            <p>Hi, I'm Emmanuel — a professional German tutor with a passion for making the language approachable, practical, and even enjoyable. I've helped over 40 students reach their language goals on Preply alone.</p>
-            <p>My lessons are tailored to your pace, your goals, and your learning style. Whether you need German for travel, work, university, or just personal growth, I've got you covered.</p>
-            <p>I hold a Goethe B2 certification and specialize in helping students from complete beginners (A1) through to upper intermediate (B2) level.</p>
+            <p>{t('about.p1')}</p>
+            <p>{t('about.p2')}</p>
+            <p>{t('about.p3')}</p>
             <div className="about-badges">
-              <span className="badge">⭐ 4.8 Rating (46 Reviews)</span>
-              <span className="badge">A1 – B2 Levels</span>
-              <span className="badge">Goethe B2 Certified</span>
-              <span className="badge">Professional Tutor</span>
+              <span className="badge">{t('about.badgeRating')}</span>
+              <span className="badge">{t('about.badgeLevels')}</span>
+              <span className="badge">{t('about.badgeCert')}</span>
+              <span className="badge">{t('about.badgePro')}</span>
             </div>
           </div>
         </div>

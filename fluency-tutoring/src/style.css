@@ -2633,3 +2633,38 @@ form.inbox-send-form {
 section.inbox-messages {
   padding: 0;
 }
+
+/* Language menu in the top bar */
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  margin-right: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--gray);
+}
+
+.lang-switch select {
+  width: auto;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--white);
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--black);
+  cursor: pointer;
+}
+
+.hero-lesson-language {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 768px) {
+  .lang-switch {
+    margin-right: 0.75rem;
+  }
+}
