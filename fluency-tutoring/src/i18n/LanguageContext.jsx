@@ -9,6 +9,8 @@ import { STRINGS } from './strings'
  */
 export const LANGUAGES = [
   ['en', 'English'],
+  ['de', 'Deutsch'],
+  ['tr', 'Türkçe'],
   ['fr', 'Français'],
   ['es', 'Español'],
   ['it', 'Italiano'],
