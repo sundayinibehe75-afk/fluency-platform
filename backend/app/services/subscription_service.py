@@ -120,8 +120,17 @@ async def get_live_subscription(db: AsyncSession, student_id: uuid.UUID) -> Subs
 
 
 async def create_checkout(db: AsyncSession, student: User, product_key: str) -> dict:
-    """Start Stripe Checkout for a monthly plan."""
+    """Start paying for a monthly plan.
+
+    Paystack: a prepaid package (paid once, lessons valid for 30 days).
+    Stripe: an auto-renewing subscription.
+    """
     plan = await _get_plan(db, product_key)
+
+    if settings.payment_provider == "paystack":
+        from app.services import paystack_service
+
+        return {"session_url": await paystack_service.start_package_payment(db, student, plan)}
 
     if await get_live_subscription(db, student.id) is not None:
         raise HTTPException(

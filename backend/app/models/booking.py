@@ -50,6 +50,10 @@ class Booking(Base):
     late_cancellation: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Which provider took the payment ("stripe" or "paystack") and its
+    # transaction reference (used to verify the payment and to refund it)
+    payment_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     stripe_session_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True
     )

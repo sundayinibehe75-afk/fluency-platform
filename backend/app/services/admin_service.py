@@ -155,7 +155,7 @@ async def stats(db: AsyncSession, admin: User) -> dict:
     )
     plan_paid = await scalar(
         select(func.sum(CreditGrant.amount_cents)).where(
-            CreditGrant.source == "subscription", CreditGrant.created_at >= month_start
+            CreditGrant.source.in_(["subscription", "package"]), CreditGrant.created_at >= month_start
         )
     )
 

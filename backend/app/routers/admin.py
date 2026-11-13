@@ -2,6 +2,7 @@
 
 Endpoints (admin only):
 - GET   /admin/stats                          — overview numbers for this month
+- GET/PUT /admin/settings/exchange-rate       — naira per dollar for Paystack checkout
 - GET   /admin/students                       — students with plan, credits, trial, goal
 - GET   /admin/students/{id}/credits          — a student's credit grants
 - POST  /admin/students/{id}/credits          — add lessons (e.g. a goodwill credit)
@@ -9,6 +10,7 @@ Endpoints (admin only):
 """
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -22,6 +24,10 @@ from app.services import admin_service
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+class ExchangeRate(BaseModel):
+    ngn_per_usd: Decimal = Field(gt=0, le=100000)
+
+
 class AddCredits(BaseModel):
     lessons: int = Field(ge=1, le=100)
     expires_at: datetime
@@ -31,6 +37,30 @@ class AddCredits(BaseModel):
 class UpdateGrant(BaseModel):
     expires_at: Optional[datetime] = None
     add_lessons: Optional[int] = Field(default=None, ge=-100, le=100)
+
+
+@router.get("/settings/exchange-rate")
+async def get_exchange_rate(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("admin")),
+) -> dict:
+    from app.services import paystack_service
+
+    rate = await paystack_service.get_rate(db)
+    return {"ngn_per_usd": float(rate) if rate is not None else None}
+
+
+@router.put("/settings/exchange-rate")
+async def set_exchange_rate(
+    body: ExchangeRate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("admin")),
+) -> dict:
+    """Naira per US dollar, used to charge dollar prices in naira (Paystack)."""
+    from app.services import paystack_service
+
+    rate = await paystack_service.set_rate(db, body.ngn_per_usd)
+    return {"ngn_per_usd": float(rate)}
 
 
 @router.get("/stats")

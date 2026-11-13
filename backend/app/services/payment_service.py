@@ -81,6 +81,12 @@ async def create_checkout_session(
             },
         )
 
+    if settings.payment_provider == "paystack":
+        from app.services import paystack_service
+
+        url = await paystack_service.start_booking_payment(db, booking, student)
+        return CheckoutSessionResponse(session_url=url)
+
     # Create Stripe Checkout Session
     session = stripe.checkout.Session.create(
         mode="payment",
@@ -364,6 +370,12 @@ async def initiate_refund(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "NOT_FOUND", "detail": "Booking not found."},
         )
+
+    if booking.payment_provider == "paystack" and booking.payment_reference:
+        from app.services import paystack_service
+
+        await paystack_service.refund(booking.payment_reference)
+        return True
 
     if not booking.stripe_payment_intent_id:
         logger.warning(

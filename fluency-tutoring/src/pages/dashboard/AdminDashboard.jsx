@@ -16,6 +16,48 @@ const TABS = ['Overview', 'Bookings', 'Students', 'Availability', 'Time Off', 'T
 
 const PLAN_NAMES = { plan_2x: '2× a week', plan_3x: '3× a week', plan_4x: '4× a week', plan_5x: '5× a week' }
 
+function ExchangeRateSetting() {
+  const api = useApi()
+  const [rate, setRate] = useState('')
+  const [saved, setSaved] = useState(null)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    api.get('/admin/settings/exchange-rate').then((res) => {
+      setSaved(res.data.ngn_per_usd)
+      setRate(res.data.ngn_per_usd ?? '')
+    }).catch(() => {})
+  }, [])
+
+  async function save(e) {
+    e.preventDefault()
+    setMessage('')
+    try {
+      const res = await api.put('/admin/settings/exchange-rate', { ngn_per_usd: Number(rate) })
+      setSaved(res.data.ngn_per_usd)
+      setMessage('Saved.')
+    } catch (err) {
+      setMessage(getErrorMessage(err, 'Could not save.'))
+    }
+  }
+
+  return (
+    <form className="admin-rate" onSubmit={save}>
+      <label>
+        Naira per US dollar
+        <input type="number" min="1" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} required />
+      </label>
+      <button type="submit" className="btn btn-primary btn-sm">Save rate</button>
+      <span className="admin-muted">
+        {saved
+          ? `A $10 lesson is charged ₦${Math.round(10 * saved).toLocaleString('en-NG')}.`
+          : 'Set this before taking payments: dollar prices are charged in naira at this rate.'}
+        {message && ` ${message}`}
+      </span>
+    </form>
+  )
+}
+
 function OverviewTab() {
   const api = useApi()
   const [stats, setStats] = useState(null)
@@ -46,6 +88,7 @@ function OverviewTab() {
 
   return (
     <div className="admin-overview">
+      <ExchangeRateSetting />
       <div className="admin-stats-grid">
         {cards.map(([title, value, note]) => (
           <div className="admin-stat-card" key={title}>
@@ -345,7 +388,7 @@ function StudentCredits({ student, onChanged }) {
               const expired = new Date(g.expires_at) <= now
               return (
                 <tr key={g.id} className={expired ? 'admin-row-muted' : ''}>
-                  <td>{g.source === 'subscription' ? 'Plan' : 'Added by you'}</td>
+                  <td>{g.source === 'subscription' ? 'Plan' : g.source === 'package' ? 'Package' : 'Added by you'}</td>
                   <td>{g.used}/{g.total}</td>
                   <td>{expired ? 0 : g.remaining}</td>
                   <td>{formatDate(g.expires_at)}{expired && ' (expired)'}</td>

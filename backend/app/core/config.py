@@ -32,10 +32,17 @@ class Settings(BaseSettings):
     jwt_secret: str
 
     # ------------------------------------------------------------------ #
-    # Stripe                                                               #
+    # Payments                                                             #
     # ------------------------------------------------------------------ #
-    stripe_secret_key: str
-    stripe_webhook_secret: str
+    # "paystack" (single lessons + prepaid monthly packages, charged in NGN)
+    # or "stripe" (single lessons + auto-renewing subscriptions)
+    payment_provider: str = "stripe"
+
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+
+    # Paystack secret key (sk_test_... or sk_live_...); also signs webhooks
+    paystack_secret_key: str = ""
 
     # ------------------------------------------------------------------ #
     # Resend (transactional email)                                         #

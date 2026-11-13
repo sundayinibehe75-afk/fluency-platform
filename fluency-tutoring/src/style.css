@@ -2346,3 +2346,71 @@ form.lesson-chat-form {
     padding: 0.3rem 0.55rem;
   }
 }
+
+.payment-result {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--light);
+}
+
+.payment-result p {
+  color: var(--gray);
+  margin-top: 1rem;
+  line-height: 1.6;
+}
+
+.payment-result--ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.payment-result--bad {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.payment-result-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.price-naira {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--gray);
+  margin-top: -0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.admin-rate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+form.admin-rate {
+  flex-direction: row;
+}
+
+.admin-rate label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.admin-rate input {
+  width: 9rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}

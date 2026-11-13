@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { nairaHint, usePaymentConfig } from '../../hooks/usePaymentConfig'
 import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import { toLocalTime, formatDate } from '../../utils/dateUtils'
@@ -47,6 +48,7 @@ export default function BookingCalendar() {
   const [account, setAccount] = useState(null)
   const [bookingType, setBookingType] = useState(null)
   const [weekly, setWeekly] = useState(false)
+  const payConfig = usePaymentConfig()
 
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
@@ -182,7 +184,9 @@ export default function BookingCalendar() {
                   />
                   {type === 'plan' && <>Use a plan lesson <small>({account.credits_remaining} left)</small></>}
                   {type === 'trial' && <>Free trial lesson <small>(one per student)</small></>}
-                  {type === 'single' && <>Single lesson <small>($10, pay now)</small></>}
+                  {type === 'single' && (
+                    <>Single lesson <small>($10{nairaHint(payConfig, 1000) ? `, ${nairaHint(payConfig, 1000)} in naira` : ''}, pay now)</small></>
+                  )}
                 </label>
               ))}
               {bookingType === 'plan' && account.credits_remaining > 1 && (

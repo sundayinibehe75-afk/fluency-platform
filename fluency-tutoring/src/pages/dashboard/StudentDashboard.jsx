@@ -45,7 +45,10 @@ function PlanCard({ account, onCancel, onResume, busy }) {
             </>
           ) : (
             <p className="plan-card-meta">
-              No monthly plan. <Link to="/#pricing" className="dashboard-link">See plans</Link>
+              {account.credits_remaining > 0
+                ? 'Your prepaid lessons are below.'
+                : 'No lessons left.'}{' '}
+              <Link to="/#pricing" className="dashboard-link">Buy a month of lessons</Link>
             </p>
           )}
         </div>
@@ -215,7 +218,26 @@ export default function StudentDashboard() {
   const [account, setAccount] = useState(null)
   const [planBusy, setPlanBusy] = useState(false)
   const [params] = useSearchParams()
-  const notice = params.get('booked')
+  const payReference = params.get('reference') || params.get('trxref')
+  const [packageNotice, setPackageNotice] = useState('')
+
+  // Back from paying for a lesson package: confirm it and refresh the lessons
+  useEffect(() => {
+    if (!payReference || !user) return
+    api
+      .get(`/payments/paystack/verify?reference=${encodeURIComponent(payReference)}`)
+      .then((res) => {
+        setPackageNotice(
+          res.data.status === 'success'
+            ? 'Payment received. Your lessons for this month have been added. 🎉'
+            : 'The payment did not go through. No lessons were added.'
+        )
+        fetchAccount()
+      })
+      .catch((err) => setPackageNotice(getErrorMessage(err, 'We could not confirm your payment yet. Please check again in a few minutes.')))
+  }, [payReference, user])
+
+  const notice = packageNotice || (params.get('booked')
     ? 'Your lesson is booked. A confirmation email is on its way.'
     : params.get('weekly')
       ? `Booked ${params.get('weekly')} weekly lesson(s).` +
@@ -226,7 +248,7 @@ export default function StudentDashboard() {
       ? 'Your lesson has been moved. We have emailed you the new time.'
       : params.get('plan') === 'success'
         ? 'Thank you! Your plan is active. Your lessons may take a moment to appear.'
-        : null
+        : null)
 
   useEffect(() => {
     if (user) {
