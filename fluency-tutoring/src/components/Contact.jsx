@@ -19,9 +19,9 @@ export default function Contact() {
         <p className="section-label">Get in Touch</p>
         <h2 className="section-title">Ready to Start Learning?</h2>
         <p className="section-sub" style={{ margin: '0 auto 2rem' }}>
-          Have questions or want to book your free introductory lesson? Send me a message here
-          {user ? '' : ' (it takes a minute to create your free account)'} or on WhatsApp, and
-          I'll get back to you within 24 hours.
+          Have questions or want to book your free introductory lesson? Message me on this site
+          {user ? '' : ' (create a free account in a minute)'} or on WhatsApp, and I'll get back to
+          you within 24 hours.
         </p>
         <div className="contact-actions">
           <Link to={messagesLink} className="btn btn-primary">

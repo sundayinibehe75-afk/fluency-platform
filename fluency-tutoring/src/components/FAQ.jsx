@@ -7,11 +7,11 @@ const faqItems = [
   },
   {
     question: 'How do online lessons work?',
-    answer: 'Lessons take place via a built-in video call directly on this platform — no extra software needed. Simply log in, navigate to your lesson room at the scheduled time, and join the session. I provide all materials digitally during the lesson.'
+    answer: 'Lessons happen in the video classroom on this site, so there is nothing to install. Your Join button appears on your dashboard 10 minutes before the lesson. The classroom has screen sharing, a full-screen view and a chat beside the video, and after the lesson you will find your notes and homework under My Notes.'
   },
   {
     question: 'Can I reschedule or cancel a lesson?',
-    answer: 'Yes! You can cancel or reschedule a lesson free of charge up to 24 hours before the scheduled start time. Cancellations within 24 hours of the lesson are non-refundable to respect the reserved time slot.'
+    answer: 'Yes. You can reschedule or cancel from your dashboard up to 12 hours before the lesson starts: a paid lesson is refunded in full, a plan lesson goes back to your plan, and a free trial can be booked again. With less than 12 hours\' notice the lesson counts as taken, because that time was kept for you.'
   },
   {
     question: 'What teaching methods do you use?',
@@ -20,6 +20,10 @@ const faqItems = [
   {
     question: 'How long are the lessons and how often should I take them?',
     answer: 'Lessons are 30 or 60 minutes: 30 minutes suits busy schedules and conversation practice, 60 minutes gives time for grammar and deeper work. For beginners, I recommend 2–3 sessions per week for steady progress. Intermediate and advanced learners often benefit from 1–2 sessions per week combined with self-study between lessons.'
+  },
+  {
+    question: 'How do I pay, and do plans renew automatically?',
+    answer: 'You pay securely by card through Paystack. Prices are in US dollars and charged in naira at the day\'s exchange rate; your bank converts it to your own currency. Monthly plans give you a month of lessons, valid for 30 days. They only renew if you tick "Renew automatically", and then you get an email 3 days before each renewal and can turn it off anytime in your dashboard.'
   },
   {
     question: 'Do you help with exam preparation (Goethe, TestDaF, telc)?',
