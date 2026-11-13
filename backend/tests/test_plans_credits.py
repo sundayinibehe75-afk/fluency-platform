@@ -502,3 +502,25 @@ async def test_slot_in_the_past_is_rejected(db):
             db, SlotCreate(tutor_id=tutor.id, start_at=start, end_at=start + timedelta(hours=1), duration_minutes=60)
         )
     assert exc.value.status_code == 400
+
+
+async def test_latest_messages_returns_newest_in_order(db):
+    """The lesson chat panel loads the newest messages, oldest first."""
+    from app.services import messaging_service
+
+    admin, _ = await _tutor(db)
+    student = await _user(db)
+    from app.models.message import Message
+
+    for i in range(55):
+        sent = await messaging_service.send_message(db, student.id, admin.id, f"msg {i}")
+        # In one test transaction every row gets the same now(); real messages
+        # arrive in separate requests, so give each a distinct time.
+        row = (await db.execute(select(Message).where(Message.id == sent.id))).scalar_one()
+        row.sent_at = _now() + timedelta(seconds=i)
+    await db.flush()
+    first_page = await messaging_service.get_thread(db, admin.id, student.id)
+    latest = await messaging_service.get_thread(db, admin.id, student.id, latest=True)
+    assert first_page[0].body == "msg 0"
+    assert len(latest) == 50
+    assert [m.body for m in latest[-2:]] == ["msg 53", "msg 54"]

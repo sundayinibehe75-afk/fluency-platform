@@ -2150,3 +2150,199 @@ form.notes-editor {
     display: none;
   }
 }
+
+.lesson-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lesson-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: #2a2a2a;
+  white-space: nowrap;
+}
+
+.lesson-clock--soon {
+  background: #78350f;
+  color: #fde68a;
+}
+
+.lesson-clock--over {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
+.lesson-bar-btn--on {
+  border-color: #fff;
+  background: #333;
+}
+
+.lesson-unread {
+  display: inline-block;
+  min-width: 1.2rem;
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.2rem;
+  text-align: center;
+}
+
+.lesson-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+.lesson-main .lesson-video {
+  flex: 1;
+  min-width: 0;
+}
+
+.lesson-chat {
+  width: 320px;
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid #333;
+}
+
+.lesson-chat-head {
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-chat-head small {
+  font-weight: 400;
+  color: var(--gray);
+  font-size: 0.75rem;
+}
+
+.lesson-chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: #f7f7f8;
+}
+
+.lesson-chat-empty {
+  color: var(--gray);
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+}
+
+.lesson-chat-msg {
+  max-width: 85%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.lesson-chat-msg time {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  align-self: flex-end;
+  margin-top: 0.15rem;
+}
+
+.lesson-chat-msg.mine {
+  align-self: flex-end;
+  background: var(--red);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.lesson-chat-msg.theirs {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.lesson-chat-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
+}
+
+form.lesson-chat-form {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.lesson-chat-form input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.lesson-chat-form button {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0 0.9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lesson-chat-form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 900px) {
+  /* On small screens the chat slides over the video */
+  .lesson-chat {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(100%, 360px);
+    z-index: 2;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+@media (max-width: 600px) {
+  .lesson-bar {
+    padding: 0 0.5rem;
+    gap: 0.4rem;
+  }
+
+  .lesson-bar-title {
+    display: none;
+  }
+
+  .lesson-bar-btn {
+    padding: 0.3rem 0.55rem;
+  }
+}

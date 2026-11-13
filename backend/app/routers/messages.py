@@ -33,6 +33,7 @@ async def list_threads(
 async def get_thread(
     user_id: uuid.UUID,
     page: int = Query(1, ge=1),
+    latest: bool = Query(False, description="Return the newest 50 messages"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("student", "tutor", "admin")),
 ) -> List[MessageResponse]:
@@ -42,6 +43,7 @@ async def get_thread(
         other_user_id=user_id,
         current_user_id=current_user.id,
         page=page,
+        latest=latest,
     )
 
 

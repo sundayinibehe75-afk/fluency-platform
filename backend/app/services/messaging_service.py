@@ -135,10 +135,13 @@ async def get_thread(
     other_user_id: uuid.UUID,
     current_user_id: uuid.UUID,
     page: int = 1,
+    latest: bool = False,
 ) -> List[MessageResponse]:
     """Return paginated messages between current_user and other_user.
 
     Messages are ordered by sent_at ASC (oldest first), paginated at 50/page.
+    With latest=True, returns the newest 50 instead (still oldest first),
+    which is what a live chat panel needs.
     Also marks unread messages (where recipient is current_user) as read.
     """
     offset = (page - 1) * MESSAGES_PER_PAGE
@@ -158,13 +161,16 @@ async def get_thread(
                 ),
             )
         )
-        .order_by(Message.sent_at.asc())
-        .offset(offset)
-        .limit(MESSAGES_PER_PAGE)
     )
+    if latest:
+        query = query.order_by(Message.sent_at.desc()).limit(MESSAGES_PER_PAGE)
+    else:
+        query = query.order_by(Message.sent_at.asc()).offset(offset).limit(MESSAGES_PER_PAGE)
 
     result = await db.execute(query)
-    messages = result.scalars().all()
+    messages = list(result.scalars().all())
+    if latest:
+        messages.reverse()
 
     # Mark unread messages as read where recipient is current_user
     for msg in messages:

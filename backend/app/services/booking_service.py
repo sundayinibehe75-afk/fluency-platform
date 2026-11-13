@@ -762,7 +762,11 @@ async def get_booking(
     )
     slot = slot_result.scalar_one_or_none()
 
-    return _booking_to_response(booking, slot)
+    response = _booking_to_response(booking, slot)
+    student = (await db.execute(select(User).where(User.id == booking.student_id))).scalar_one_or_none()
+    if student is not None:
+        response.student_name = f"{student.first_name} {student.last_name}".strip()
+    return response
 
 
 async def list_bookings(

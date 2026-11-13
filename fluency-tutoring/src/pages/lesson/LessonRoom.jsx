@@ -5,6 +5,7 @@ import { useApi } from '../../hooks/useApi'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDate } from '../../utils/dateUtils'
 import Nav from '../../components/Nav'
+import LessonChat from '../../components/LessonChat'
 
 /**
  * Determines the lesson phase based on current time relative to booking times.
@@ -12,6 +13,25 @@ import Nav from '../../components/Nav'
  * @param {string} endAt - ISO 8601 end time
  * @returns {'waiting' | 'active' | 'ended'}
  */
+/**
+ * The lesson clock in the top bar. It only informs; the call keeps running
+ * after the planned end (the video room closes 30 minutes later).
+ */
+function lessonClock(startAt, endAt, now) {
+  const start = new Date(startAt).getTime()
+  const end = new Date(endAt).getTime()
+  const fmt = (ms) => {
+    const total = Math.max(0, Math.floor(ms / 1000))
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+  }
+  if (now < start) return { text: `Starts in ${fmt(start - now)}`, state: 'before' }
+  if (now < end) {
+    const left = end - now
+    return { text: `${fmt(left)} left`, state: left <= 5 * 60 * 1000 ? 'soon' : 'running' }
+  }
+  return { text: `Time's up · +${fmt(now - end)}`, state: 'over' }
+}
+
 function getLessonPhase(startAt, endAt) {
   const now = Date.now()
   const start = new Date(startAt).getTime()
@@ -62,6 +82,29 @@ export default function LessonRoom() {
   const stageRef = useRef(null)
   const callFrameRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [now, setNow] = useState(Date.now())
+  const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 900)
+  const [unread, setUnread] = useState(0)
+  const [chatPartner, setChatPartner] = useState({ id: null, name: '' })
+
+  // Tick once a second for the lesson clock
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Who the chat is with: the tutor writes to the student, the student to the tutor
+  useEffect(() => {
+    if (!booking || !user) return
+    if (user.role === 'admin') {
+      setChatPartner({ id: booking.student_id, name: booking.student_name || 'your student' })
+    } else {
+      api
+        .get(`/tutors/${booking.tutor_id}`)
+        .then((res) => setChatPartner({ id: res.data.user_id, name: res.data.display_name }))
+        .catch(() => {})
+    }
+  }, [booking, user])
 
   // Keep the button label in sync when the user leaves full screen with Esc
   useEffect(() => {
@@ -313,6 +356,7 @@ export default function LessonRoom() {
   // The classroom fills the whole window (no site navigation or page
   // padding), so video and screen shares get as much space as possible.
   const dashboardPath = user?.role === 'admin' ? '/admin' : '/dashboard'
+  const clock = booking?.start_at && booking?.end_at ? lessonClock(booking.start_at, booking.end_at, now) : null
   return (
     <div className="lesson-stage" ref={stageRef}>
       <div className="lesson-bar">
@@ -321,11 +365,35 @@ export default function LessonRoom() {
           Fluency <span>German</span>
           {booking?.start_at && <small> · {formatDate(booking.start_at)}</small>}
         </span>
-        <button type="button" className="lesson-bar-btn" onClick={toggleFullscreen}>
-          {isFullscreen ? 'Exit full screen' : 'Full screen'}
-        </button>
+        <div className="lesson-bar-actions">
+          {clock && (
+            <span className={`lesson-clock lesson-clock--${clock.state}`} role="timer" aria-live="off">
+              ⏱ {clock.text}
+            </span>
+          )}
+          <button
+            type="button"
+            className={`lesson-bar-btn${chatOpen ? ' lesson-bar-btn--on' : ''}`}
+            onClick={() => setChatOpen((o) => !o)}
+            aria-pressed={chatOpen}
+          >
+            Chat{unread > 0 && <span className="lesson-unread">{unread}</span>}
+          </button>
+          <button type="button" className="lesson-bar-btn" onClick={toggleFullscreen}>
+            {isFullscreen ? 'Exit full screen' : 'Full screen'}
+          </button>
+        </div>
       </div>
-      <div ref={videoContainerRef} className="lesson-video" aria-label="Video lesson room" />
+      <div className="lesson-main">
+        <div ref={videoContainerRef} className="lesson-video" aria-label="Video lesson room" />
+        <LessonChat
+          otherUserId={chatPartner.id}
+          otherName={chatPartner.name}
+          myId={user?.id}
+          open={chatOpen}
+          onUnread={setUnread}
+        />
+      </div>
     </div>
   )
 }
