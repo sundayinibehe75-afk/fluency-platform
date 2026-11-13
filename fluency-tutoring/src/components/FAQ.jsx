@@ -19,7 +19,7 @@ const faqItems = [
   },
   {
     question: 'How long are the lessons and how often should I take them?',
-    answer: 'Standard lessons are 60 minutes. For beginners, I recommend 2–3 sessions per week for steady progress. Intermediate and advanced learners often benefit from 1–2 sessions per week combined with self-study between lessons.'
+    answer: 'Lessons are 30 or 60 minutes: 30 minutes suits busy schedules and conversation practice, 60 minutes gives time for grammar and deeper work. For beginners, I recommend 2–3 sessions per week for steady progress. Intermediate and advanced learners often benefit from 1–2 sessions per week combined with self-study between lessons.'
   },
   {
     question: 'Do you help with exam preparation (Goethe, TestDaF, telc)?',

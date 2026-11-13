@@ -52,6 +52,7 @@ def _grant_dict(g: CreditGrant) -> dict:
         "total": g.total,
         "used": g.used,
         "remaining": g.total - g.used,
+        "lesson_minutes": g.lesson_minutes,
         "expires_at": g.expires_at,
         "note": g.note,
         "created_at": g.created_at,
@@ -80,7 +81,12 @@ def _future(expires_at: datetime) -> datetime:
 
 
 async def add_credits(
-    db: AsyncSession, student_id: uuid.UUID, lessons: int, expires_at: datetime, note: str | None
+    db: AsyncSession,
+    student_id: uuid.UUID,
+    lessons: int,
+    expires_at: datetime,
+    note: str | None,
+    lesson_minutes: int = 60,
 ) -> dict:
     await _get_student(db, student_id)
     grant = await credit_service.grant_credits(
@@ -90,6 +96,7 @@ async def add_credits(
         expires_at=_future(expires_at),
         source="admin",
         note=note,
+        lesson_minutes=lesson_minutes,
     )
     return _grant_dict(grant)
 

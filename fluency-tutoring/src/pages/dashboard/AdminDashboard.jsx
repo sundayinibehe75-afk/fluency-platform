@@ -254,7 +254,10 @@ function BookingsTab() {
             <Fragment key={booking.id}>
             <tr>
               <td>{booking.student_name || 'Student'}</td>
-              <td>{formatDate(booking.start_at || booking.slot_start_at)}</td>
+              <td>
+                {formatDate(booking.start_at || booking.slot_start_at)}
+                {booking.duration_minutes ? ` · ${booking.duration_minutes} min` : ''}
+              </td>
               <td><LessonTypeBadge type={booking.booking_type} /></td>
               <td>
                 <span className={`admin-status admin-status--${booking.status}`}>
@@ -331,6 +334,7 @@ function StudentCredits({ student, onChanged }) {
   const api = useApi()
   const [grants, setGrants] = useState([])
   const [lessons, setLessons] = useState(1)
+  const [lessonMinutes, setLessonMinutes] = useState(60)
   const [expires, setExpires] = useState(inDays(30))
   const [note, setNote] = useState('')
   const [message, setMessage] = useState('')
@@ -354,11 +358,12 @@ function StudentCredits({ student, onChanged }) {
     try {
       await api.post(`/admin/students/${student.id}/credits`, {
         lessons: Number(lessons),
+        lesson_minutes: lessonMinutes,
         expires_at: endOfDayIso(expires),
         note: note || null,
       })
       setNote('')
-      setMessage(`Added ${lessons} lesson(s).`)
+      setMessage(`Added ${lessons} ${lessonMinutes}-minute lesson(s).`)
       load()
       onChanged()
     } catch (err) {
@@ -404,6 +409,13 @@ function StudentCredits({ student, onChanged }) {
           <input type="number" min="1" max="100" value={lessons} onChange={(e) => setLessons(e.target.value)} required />
         </label>
         <label>
+          Length
+          <select value={lessonMinutes} onChange={(e) => setLessonMinutes(Number(e.target.value))}>
+            <option value={60}>60 min</option>
+            <option value={30}>30 min</option>
+          </select>
+        </label>
+        <label>
           Use by
           <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} required />
         </label>
@@ -419,7 +431,7 @@ function StudentCredits({ student, onChanged }) {
       ) : (
         <table className="admin-table admin-table--compact">
           <thead>
-            <tr><th>From</th><th>Used</th><th>Left</th><th>Expires</th><th>Note</th><th></th></tr>
+            <tr><th>From</th><th>Length</th><th>Used</th><th>Left</th><th>Expires</th><th>Note</th><th></th></tr>
           </thead>
           <tbody>
             {grants.map((g) => {
@@ -427,6 +439,7 @@ function StudentCredits({ student, onChanged }) {
               return (
                 <tr key={g.id} className={expired || g.total === 0 ? 'admin-row-muted' : ''}>
                   <td>{g.source === 'subscription' ? 'Plan' : g.source === 'package' ? 'Package' : 'Added by you'}</td>
+                  <td>{g.lesson_minutes || 60} min</td>
                   <td>{g.used}/{g.total}</td>
                   <td>{expired ? 0 : g.remaining}</td>
                   <td>{formatDate(g.expires_at)}{expired && ' (expired)'}</td>
@@ -764,12 +777,14 @@ function AvailabilityTab() {
           </button>
         </div>
         <div className="admin-form-group">
-          <label htmlFor="duration">Duration (minutes)</label>
+          <label htmlFor="duration">Free time (students book 30 or 60 min inside it)</label>
           <select id="duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
             <option value={30}>30 min</option>
-            <option value={45}>45 min</option>
-            <option value={60}>60 min</option>
-            <option value={90}>90 min</option>
+            <option value={60}>1 hour</option>
+            <option value={90}>1.5 hours</option>
+            <option value={120}>2 hours</option>
+            <option value={180}>3 hours</option>
+            <option value={240}>4 hours</option>
           </select>
         </div>
         <div className="admin-form-group">

@@ -57,6 +57,7 @@ def _booking_to_response(
         "reserved_until": booking.reserved_until,
         "start_at": slot.start_at if slot else None,
         "end_at": slot.end_at if slot else None,
+        "duration_minutes": slot.duration_minutes if slot else None,
         "created_at": booking.created_at,
         "updated_at": booking.updated_at,
         "has_review": has_review,
@@ -72,8 +73,14 @@ async def create_booking(
     slot_id: uuid.UUID,
     booking_type: str = "single",
     notify: bool = True,
+    start_at: datetime | None = None,
+    minutes: int = 60,
 ) -> BookingResponse:
     """Create a new booking for the given student and slot.
+
+    start_at / minutes: the lesson's start (on a half hour inside the free
+    slot; default the slot's start) and length (30 or 60). The lesson is
+    carved out of the free slot and the rest stays bookable.
 
     booking_type:
     - "single": paid per lesson. Status pending_payment with a 15-minute
@@ -89,9 +96,18 @@ async def create_booking(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "VALIDATION_ERROR", "detail": "Unknown booking type."},
         )
-    # Fetch the slot
+    from app.services import slot_service
+
+    slot_service.check_length(minutes)
+    if booking_type == "trial" and minutes != 60:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "The free trial is a 60-minute lesson."},
+        )
+
+    # Fetch and lock the slot (two students may book parts of it at once)
     result = await db.execute(
-        select(AvailabilitySlot).where(AvailabilitySlot.id == slot_id)
+        select(AvailabilitySlot).where(AvailabilitySlot.id == slot_id).with_for_update()
     )
     slot = result.scalar_one_or_none()
 
@@ -107,11 +123,15 @@ async def create_booking(
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
         )
 
-    if slot.start_at <= datetime.now(tz=timezone.utc):
+    lesson_start = start_at or slot.start_at
+    if lesson_start.tzinfo is None:
+        lesson_start = lesson_start.replace(tzinfo=timezone.utc)
+    if lesson_start <= datetime.now(tz=timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot has already started."},
         )
+    exact = lesson_start == slot.start_at and slot.end_at == lesson_start + timedelta(minutes=minutes)
 
     # Check for existing booking by this student on this slot
     existing_result = await db.execute(
@@ -129,6 +149,7 @@ async def create_booking(
         existing_booking is not None
         and existing_booking.status == "pending_payment"
         and booking_type == "single"
+        and exact
     ):
         # The student left the payment page without paying and is trying
         # again: give them the same booking (with a fresh hold) so they can
@@ -161,17 +182,19 @@ async def create_booking(
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
         )
 
+
     now = datetime.now(tz=timezone.utc)
     grant = None
 
     if booking_type == "single":
+        price_key = "single_session" if minutes == 60 else f"single_session_{minutes}"
         price_result = await db.execute(
-            select(PriceConfig).where(PriceConfig.product_key == "single_session")
+            select(PriceConfig).where(PriceConfig.product_key == price_key)
         )
         price_config = price_result.scalar_one_or_none()
         if price_config is None:
-            logger.warning("single_session price missing; using the default $10")
-            price_cents, currency = DEFAULT_SINGLE_PRICE_CENTS, "USD"
+            logger.warning("Single lesson price missing; using the default", extra={"product_key": price_key})
+            price_cents, currency = DEFAULT_SINGLE_PRICE_CENTS * minutes // 60, "USD"
         else:
             price_cents = price_config.price_cents
             currency = price_config.currency
@@ -187,13 +210,13 @@ async def create_booking(
                     detail={"error": "TRIAL_USED", "detail": "You have already used your free trial lesson."},
                 )
         else:
-            grant = await credit_service.find_usable_grant(db, student_id, slot.start_at)
+            grant = await credit_service.find_usable_grant(db, student_id, lesson_start, minutes)
             if grant is None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "NO_CREDITS",
-                        "detail": "You have no lesson credits valid for this date. "
+                        "detail": f"You have no {minutes}-minute plan lessons valid for this date. "
                                   "Choose a plan or book a single lesson.",
                     },
                 )
@@ -202,6 +225,10 @@ async def create_booking(
         currency = "USD"
         booking_status = "confirmed"
         reserved_until = None
+
+    # Everything checked: take exactly the lesson's time out of the free slot
+    slot = await slot_service.carve(db, slot, lesson_start, minutes)
+    slot_id = slot.id
 
     booking = Booking(
         student_id=student_id,
@@ -403,9 +430,11 @@ async def cancel_booking(
 
     booking.status = "cancelled"
     booking.reserved_until = None
-    if slot is not None and slot.status == "booked":
-        slot.status = "available"
     await db.flush()
+    if slot is not None and slot.status in ("booked", "available"):
+        from app.services import slot_service
+
+        await slot_service.release(db, slot)
 
     refunded = False
     if should_refund:
@@ -490,8 +519,12 @@ async def reschedule_booking(
     booking_id: uuid.UUID,
     new_slot_id: uuid.UUID,
     actor: User,
+    start_at: datetime | None = None,
 ) -> BookingResponse:
     """Move a confirmed booking to another available slot.
+
+    The lesson keeps its length; start_at picks the new start inside the free
+    slot (default: the slot's start).
 
     Rules:
     - Students can only move their own bookings; admins can move any.
@@ -557,7 +590,13 @@ async def reschedule_booking(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "NOT_FOUND", "detail": "Slot not found."},
         )
-    if new_slot.status != "available" or new_slot.start_at <= now:
+    from app.services import slot_service
+
+    minutes = old_slot.duration_minutes if old_slot is not None else 60
+    new_start = start_at or new_slot.start_at
+    if new_start.tzinfo is None:
+        new_start = new_start.replace(tzinfo=timezone.utc)
+    if new_slot.status != "available" or new_start <= now:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": "BOOKING_CONFLICT", "detail": "This slot is no longer available."},
@@ -583,8 +622,8 @@ async def reschedule_booking(
         grant = (
             await db.execute(select(CreditGrant).where(CreditGrant.id == booking.credit_grant_id))
         ).scalar_one_or_none()
-        if grant is None or grant.expires_at <= new_slot.start_at:
-            other = await credit_service.find_usable_grant(db, booking.student_id, new_slot.start_at)
+        if grant is None or grant.expires_at <= new_start:
+            other = await credit_service.find_usable_grant(db, booking.student_id, new_start, grant.lesson_minutes if grant else minutes)
             if other is None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -599,13 +638,14 @@ async def reschedule_booking(
                 grant.used -= 1
             booking.credit_grant_id = other.id
 
-    if old_slot is not None and old_slot.status == "booked":
-        old_slot.status = "available"
+    new_slot = await slot_service.carve(db, new_slot, new_start, minutes)
     booking.slot_id = new_slot.id
     booking.video_room_url = None
     new_slot.status = "booked"
     try:
         await db.flush()
+        if old_slot is not None and old_slot.status == "booked":
+            await slot_service.release(db, old_slot)
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -629,6 +669,8 @@ async def book_weekly(
     db: AsyncSession,
     student: User,
     slot_id: uuid.UUID,
+    start_at: datetime | None = None,
+    minutes: int = 60,
 ) -> dict:
     """Book the same weekday and time every week with plan credits.
 
@@ -653,12 +695,18 @@ async def book_weekly(
             detail={"error": "NOT_FOUND", "detail": "Slot not found."},
         )
 
+    first_start = start_at or first.start_at
+    if first_start.tzinfo is None:
+        first_start = first_start.replace(tzinfo=timezone.utc)
+    length = timedelta(minutes=minutes)
+
     # Book no further than the latest date any of the student's credits are valid
     last_expiry = (
         await db.execute(
             select(CreditGrant.expires_at)
             .where(
                 CreditGrant.student_id == student.id,
+                CreditGrant.lesson_minutes == minutes,
                 CreditGrant.used < CreditGrant.total,
                 CreditGrant.expires_at > datetime.now(tz=timezone.utc),
             )
@@ -675,35 +723,44 @@ async def book_weekly(
     booked: list[BookingResponse] = []
     skipped: list[datetime] = []
     for week in range(MAX_WEEKLY_LESSONS):
-        start_at = first.start_at + timedelta(weeks=week)
-        if start_at >= last_expiry:
+        lesson_start = first_start + timedelta(weeks=week)
+        if lesson_start >= last_expiry:
             break
-        slot = (
-            await db.execute(
-                select(AvailabilitySlot)
-                .where(
-                    AvailabilitySlot.tutor_id == first.tutor_id,
-                    # same time each week (a minute either way is fine)
-                    AvailabilitySlot.start_at >= start_at - timedelta(minutes=1),
-                    AvailabilitySlot.start_at <= start_at + timedelta(minutes=1),
-                    AvailabilitySlot.status == "available",
-                )
-                .order_by(AvailabilitySlot.start_at)
-                .limit(1)
+        # A free slot that contains this week's lesson time (a minute either
+        # way is fine); the lesson starts on that slot's half-hour grid.
+        tolerance = timedelta(minutes=1)
+        slot, exact_start = None, None
+        candidates = await db.execute(
+            select(AvailabilitySlot)
+            .where(
+                AvailabilitySlot.tutor_id == first.tutor_id,
+                AvailabilitySlot.start_at <= lesson_start + tolerance,
+                AvailabilitySlot.end_at >= lesson_start + length - tolerance,
+                AvailabilitySlot.status == "available",
             )
-        ).scalar_one_or_none()
+            .order_by(AvailabilitySlot.start_at)
+        )
+        for candidate in candidates.scalars():
+            step = timedelta(minutes=30)
+            on_grid = candidate.start_at + step * round((lesson_start - candidate.start_at) / step)
+            if abs(on_grid - lesson_start) <= tolerance and on_grid + length <= candidate.end_at:
+                slot, exact_start = candidate, on_grid
+                break
         if slot is None:
-            skipped.append(start_at)
+            skipped.append(lesson_start)
             continue
+        lesson_start = exact_start
         try:
             async with db.begin_nested():
                 booked.append(
-                    await create_booking(db, student.id, slot.id, "plan", notify=False)
+                    await create_booking(
+                        db, student.id, slot.id, "plan", notify=False, start_at=lesson_start, minutes=minutes
+                    )
                 )
         except HTTPException as exc:
             if isinstance(exc.detail, dict) and exc.detail.get("error") == "NO_CREDITS":
                 break  # all lessons used
-            skipped.append(start_at)
+            skipped.append(lesson_start)
 
     if not booked:
         raise HTTPException(
@@ -842,14 +899,15 @@ async def expire_pending_bookings(db: AsyncSession) -> int:
     count = 0
     for booking in expired_bookings:
         booking.status = "cancelled"
+        await db.flush()
 
-        # Release the slot
+        # Release the slot (and join it with free time next to it)
+        from app.services import slot_service
+
         slot_result = await db.execute(
             select(AvailabilitySlot).where(AvailabilitySlot.id == booking.slot_id)
         )
-        slot = slot_result.scalar_one_or_none()
-        if slot is not None:
-            slot.status = "available"
+        await slot_service.release(db, slot_result.scalar_one_or_none())
 
         count += 1
         logger.info(

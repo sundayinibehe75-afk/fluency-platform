@@ -41,6 +41,8 @@ class CreditGrant(Base):
         DateTime(timezone=True), nullable=True
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A grant's lessons book lessons of this length only (30 or 60 minutes)
+    lesson_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60, server_default="60")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

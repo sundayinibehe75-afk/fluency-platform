@@ -17,12 +17,17 @@ class BookingCreate(AppBaseModel):
     slot_id: uuid.UUID
     # single = pay for this lesson; plan = use a plan credit; trial = free trial
     booking_type: Literal["single", "plan", "trial"] = "single"
+    # Lesson start inside the free slot (default: the slot's start) and length
+    start_at: Optional[datetime] = None
+    minutes: Literal[30, 60] = 60
 
 
 class BookingReschedule(AppBaseModel):
     """Request body for moving a booking to another slot."""
 
     new_slot_id: uuid.UUID
+    # New start inside that free slot (default: the slot's start)
+    start_at: Optional[datetime] = None
 
 
 class BookingResponse(AppBaseModel):
@@ -45,6 +50,7 @@ class BookingResponse(AppBaseModel):
     reserved_until: Optional[datetime] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +68,8 @@ class BookingWeekly(AppBaseModel):
     """Request body for booking the same time every week."""
 
     slot_id: uuid.UUID
+    start_at: Optional[datetime] = None
+    minutes: Literal[30, 60] = 60
 
 
 class WeeklyBookingResponse(AppBaseModel):

@@ -245,14 +245,15 @@ async def _handle_checkout_completed(
     # If the reservation expired before payment arrived, the slot may already
     # belong to someone else. In that case refund instead of double-booking.
     if booking.status == "cancelled":
-        other_result = await db.execute(
-            select(Booking).where(
-                Booking.slot_id == booking_slot_id,
-                Booking.id != booking_id_val,
-                Booking.status.in_(["pending_payment", "confirmed"]),
-            )
-        )
-        if other_result.scalar_one_or_none() is not None:
+        from app.services import slot_service
+
+        old_slot = (
+            await db.execute(select(AvailabilitySlot).where(AvailabilitySlot.id == booking_slot_id))
+        ).scalar_one_or_none()
+        usable = await slot_service.reclaim(db, old_slot) if old_slot is not None else None
+        if usable is not None:
+            booking.slot_id = booking_slot_id = usable.id
+        else:
             await db.flush()
             logger.warning(
                 "Payment arrived for an expired booking whose slot was taken — refunding",

@@ -32,14 +32,15 @@ router = APIRouter(prefix="/availability", tags=["availability"])
 @router.get("", response_model=List[SlotResponse])
 async def list_available_slots(
     tutor_id: uuid.UUID = Query(..., description="Tutor ID to filter slots"),
+    minutes: int = Query(60, description="Lesson length: 30 or 60"),
     db: AsyncSession = Depends(get_db),
 ) -> List[SlotResponse]:
-    """List available future slots for a tutor (public endpoint).
+    """Bookable lesson times for a tutor (public endpoint).
 
-    Returns only slots with status 'available' and start_at in the future,
-    ordered by start_at ascending.
+    One item per half-hour start where a lesson of `minutes` fits in a free
+    slot; book it with the item's id (the free slot) and start_at.
     """
-    return await availability_service.list_available_slots(db, tutor_id)
+    return await availability_service.list_available_slots(db, tutor_id, minutes)
 
 
 @router.get("/all", response_model=List[SlotResponse])

@@ -12,7 +12,7 @@ Endpoints (admin only):
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -34,6 +34,7 @@ class AddCredits(BaseModel):
     lessons: int = Field(ge=1, le=100)
     expires_at: datetime
     note: Optional[str] = Field(default=None, max_length=500)
+    lesson_minutes: Literal[30, 60] = 60
 
 
 class UpdateGrant(BaseModel):
@@ -114,7 +115,9 @@ async def add_credits(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role("admin")),
 ) -> dict:
-    return await admin_service.add_credits(db, student_id, body.lessons, body.expires_at, body.note)
+    return await admin_service.add_credits(
+        db, student_id, body.lessons, body.expires_at, body.note, body.lesson_minutes
+    )
 
 
 @router.patch("/credits/{grant_id}")

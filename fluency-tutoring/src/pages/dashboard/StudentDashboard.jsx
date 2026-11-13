@@ -21,6 +21,27 @@ function hoursUntil(booking) {
   return (new Date(booking.start_at || booking.slot_start_at) - new Date()) / 36e5
 }
 
+// "8 × 30 min, 2 × 60 min" when the student has lessons of a given length
+function lengthsText(account) {
+  const by = account.credits_by_length || {}
+  const parts = [30, 60]
+    .filter((m) => (by[m] || by[String(m)] || 0) > 0)
+    .map((m) => `${by[m] || by[String(m)]} × ${m} min`)
+  return parts.join(', ')
+}
+
+function onlyThirty(account) {
+  const by = account.credits_by_length || {}
+  return (by['30'] || 0) > 0 && !(by['60'] > 0)
+}
+
+// A booking's length, e.g. "30 min"
+function lessonLength(booking) {
+  if (!booking.start_at || !booking.end_at) return ''
+  const minutes = Math.round((new Date(booking.end_at) - new Date(booking.start_at)) / 60000)
+  return `${minutes} min`
+}
+
 function PlanCard({ account, onCancel, onResume, busy }) {
   if (!account) return null
   const { plan } = account
@@ -60,6 +81,7 @@ function PlanCard({ account, onCancel, onResume, busy }) {
         <div className="plan-card-credits">
           <span className="plan-card-number">{account.credits_remaining}</span>
           <span>lesson{account.credits_remaining === 1 ? '' : 's'} left</span>
+          {lengthsText(account) && <small>{lengthsText(account)}</small>}
           {account.credits_expire_at && account.credits_remaining > 0 && (
             <small>use by {formatDate(account.credits_expire_at)}</small>
           )}
@@ -67,7 +89,12 @@ function PlanCard({ account, onCancel, onResume, busy }) {
       </div>
       <div className="dashboard-card-actions">
         {account.credits_remaining > 0 && (
-          <Link to="/booking?type=plan" className="btn btn-primary btn-sm">Book with plan</Link>
+          <Link
+            to={`/booking?type=plan${onlyThirty(account) ? '&minutes=30' : ''}`}
+            className="btn btn-primary btn-sm"
+          >
+            Book with plan
+          </Link>
         )}
         {account.trial_available && (
           <Link to="/booking?type=trial" className="btn btn-outline-dark btn-sm">Book free trial</Link>
@@ -420,7 +447,7 @@ export default function StudentDashboard() {
                     {awaitingPayment.map((booking) => (
                       <div key={booking.id} className="dashboard-card">
                         <div className="dashboard-card-header">
-                          <span className="dashboard-card-date">{formatDate(booking.start_at)}</span>
+                          <span className="dashboard-card-date">{formatDate(booking.start_at)} · {lessonLength(booking)}</span>
                           <span className="dashboard-status dashboard-status--pending_payment">not paid</span>
                         </div>
                         <div className="dashboard-card-actions">
@@ -459,6 +486,7 @@ export default function StudentDashboard() {
                         <div className="dashboard-card-header">
                           <span className="dashboard-card-date">
                             {formatDate(booking.start_at || booking.slot_start_at)}
+                            {lessonLength(booking) && ` · ${lessonLength(booking)}`}
                           </span>
                           <span className={`dashboard-status dashboard-status--${booking.status}`}>
                             {booking.status}
@@ -509,6 +537,7 @@ export default function StudentDashboard() {
                         <div className="dashboard-card-header">
                           <span className="dashboard-card-date">
                             {formatDate(booking.start_at || booking.slot_start_at)}
+                            {lessonLength(booking) && ` · ${lessonLength(booking)}`}
                           </span>
                           <span className={`dashboard-status dashboard-status--${booking.status}`}>
                             {booking.status}

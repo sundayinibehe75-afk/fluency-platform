@@ -40,6 +40,8 @@ async def create_booking(
         student_id=current_user.id,
         slot_id=body.slot_id,
         booking_type=body.booking_type,
+        start_at=body.start_at,
+        minutes=body.minutes,
     )
 
 
@@ -50,7 +52,9 @@ async def book_weekly(
     current_user: User = Depends(require_role("student")),
 ) -> WeeklyBookingResponse:
     """Book this time every week while the student's plan lessons last."""
-    result = await booking_service.book_weekly(db=db, student=current_user, slot_id=body.slot_id)
+    result = await booking_service.book_weekly(
+        db=db, student=current_user, slot_id=body.slot_id, start_at=body.start_at, minutes=body.minutes
+    )
     return WeeklyBookingResponse(**result)
 
 
@@ -111,4 +115,5 @@ async def reschedule_booking(
         booking_id=booking_id,
         new_slot_id=body.new_slot_id,
         actor=current_user,
+        start_at=body.start_at,
     )

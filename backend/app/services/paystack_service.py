@@ -407,19 +407,18 @@ async def _confirm_booking(db: AsyncSession, reference: str, booking_id: str | N
         )
     )
 
-    # Paid after the 15-minute hold ran out and someone else took the slot:
-    # refund instead of double-booking.
+    # Paid after the 15-minute hold ran out: book the time again if it is
+    # still free, otherwise refund instead of double-booking.
     if booking.status == "cancelled":
-        taken = (
-            await db.execute(
-                select(Booking.id).where(
-                    Booking.slot_id == booking.slot_id,
-                    Booking.id != booking.id,
-                    Booking.status.in_(["pending_payment", "confirmed"]),
-                )
-            )
-        ).first()
-        if taken is not None:
+        from app.services import slot_service
+
+        old_slot = (
+            await db.execute(select(AvailabilitySlot).where(AvailabilitySlot.id == booking.slot_id))
+        ).scalar_one_or_none()
+        usable = await slot_service.reclaim(db, old_slot) if old_slot is not None else None
+        if usable is not None:
+            booking.slot_id = usable.id
+        else:
             await db.flush()
             logger.warning("Paystack payment arrived for a taken slot — refunding", extra={"reference": reference})
             try:
@@ -492,6 +491,7 @@ async def _grant_package(db: AsyncSession, reference: str, metadata: dict, data:
         payment_reference=reference,
         amount_cents=plan.price_cents,
         note=plan.label,
+        lesson_minutes=plan.lesson_minutes,
     )
     db.add(grant)
 

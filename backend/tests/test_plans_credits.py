@@ -51,11 +51,17 @@ async def test_migration_sets_new_prices(db):
 
     prices = {p["product_key"]: p for p in await subscription_service.list_prices(db)}
     assert prices["single_session"]["price_cents"] == 1000
-    assert {k: (v["price_cents"], v["lessons_per_month"]) for k, v in prices.items() if v["is_plan"]} == {
-        "plan_2x": (7600, 8),
-        "plan_3x": (10800, 12),
-        "plan_4x": (14000, 16),
-        "plan_5x": (17000, 20),
+    assert (prices["single_session_30"]["price_cents"], prices["single_session_30"]["lesson_minutes"]) == (600, 30)
+    plans = {k: (v["price_cents"], v["lessons_per_month"], v["lesson_minutes"]) for k, v in prices.items() if v["is_plan"]}
+    assert plans == {
+        "plan_2x": (7600, 8, 60),
+        "plan_3x": (10800, 12, 60),
+        "plan_4x": (14000, 16, 60),
+        "plan_5x": (17000, 20, 60),
+        "plan_2x_30": (4600, 8, 30),
+        "plan_3x_30": (6500, 12, 30),
+        "plan_4x_30": (8400, 16, 30),
+        "plan_5x_30": (10200, 20, 30),
     }
     assert "monthly_package" not in prices
 

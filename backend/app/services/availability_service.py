@@ -84,11 +84,18 @@ def _raise_conflict() -> None:
 async def list_available_slots(
     db: AsyncSession,
     tutor_id: uuid.UUID,
+    minutes: int = 60,
 ) -> List[SlotResponse]:
-    """Return future slots with status 'available' for the given tutor.
+    """Bookable lesson times of the given length (30 or 60 minutes).
 
-    Results are ordered by start_at ASC.
+    Each free slot offers a start on every half hour where the lesson fits,
+    e.g. a free 10:00-11:00 gives 10:00 and 10:30 for 30-minute lessons. Each
+    item carries the free slot's id (to book with) and the lesson's own
+    start/end. Ordered by start time.
     """
+    from app.services import slot_service
+
+    slot_service.check_length(minutes)
     now = datetime.now(tz=timezone.utc)
     result = await db.execute(
         select(AvailabilitySlot)
@@ -96,13 +103,28 @@ async def list_available_slots(
             and_(
                 AvailabilitySlot.tutor_id == tutor_id,
                 AvailabilitySlot.status == "available",
-                AvailabilitySlot.start_at > now,
+                AvailabilitySlot.end_at > now,
             )
         )
         .order_by(AvailabilitySlot.start_at.asc())
     )
-    slots = result.scalars().all()
-    return [SlotResponse.model_validate(slot) for slot in slots]
+    options = []
+    for slot in result.scalars():
+        for start in slot_service.lesson_starts(slot, minutes, after=now):
+            options.append(
+                SlotResponse(
+                    id=slot.id,
+                    tutor_id=slot.tutor_id,
+                    start_at=start,
+                    end_at=start + timedelta(minutes=minutes),
+                    duration_minutes=minutes,
+                    status=slot.status,
+                    recurrence_group_id=slot.recurrence_group_id,
+                    created_at=slot.created_at,
+                )
+            )
+    options.sort(key=lambda o: o.start_at)
+    return options
 
 
 async def create_slots(
@@ -349,9 +371,12 @@ async def unblock_time(
             )
         )
     )
+    from app.services import slot_service
+
     changed = 0
-    for slot in result.scalars():
-        slot.status = "available"
-        changed += 1
+    for slot in result.scalars().all():
+        if slot.status == "blocked":  # may already be joined into a neighbour
+            await slot_service.release(db, slot)
+            changed += 1
     await db.flush()
     return {"changed": changed, "booked_lessons_in_range": 0}

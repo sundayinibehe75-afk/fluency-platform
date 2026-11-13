@@ -22,17 +22,19 @@ async def find_usable_grant(
     db: AsyncSession,
     student_id: uuid.UUID,
     lesson_start: datetime,
+    minutes: int = 60,
 ) -> CreditGrant | None:
     """Return the grant to take a credit from, locking it, or None.
 
     Picks the grant with credits left that expires soonest, among grants still
-    valid at the lesson's start time.
+    valid at the lesson's start time and for lessons of this length.
     """
     result = await db.execute(
         select(CreditGrant)
         .where(
             and_(
                 CreditGrant.student_id == student_id,
+                CreditGrant.lesson_minutes == minutes,
                 CreditGrant.used < CreditGrant.total,
                 CreditGrant.expires_at > lesson_start,
                 CreditGrant.expires_at > datetime.now(tz=timezone.utc),
@@ -70,8 +72,10 @@ async def grant_credits(
     stripe_invoice_id: str | None = None,
     note: str | None = None,
     amount_cents: int | None = None,
+    lesson_minutes: int = 60,
 ) -> CreditGrant:
     grant = CreditGrant(
+        lesson_minutes=lesson_minutes,
         amount_cents=amount_cents,
         student_id=student_id,
         subscription_id=subscription_id,
@@ -92,22 +96,37 @@ async def grant_credits(
 
 
 async def credit_summary(db: AsyncSession, student_id: uuid.UUID) -> dict:
-    """Credits the student can still use, and when the soonest ones expire."""
+    """Credits the student can still use, and when the soonest ones expire.
+
+    credits_by_length: lessons left per lesson length, e.g. {"30": 4, "60": 0}.
+    """
     now = datetime.now(tz=timezone.utc)
     result = await db.execute(
         select(
+            CreditGrant.lesson_minutes,
             func.coalesce(func.sum(CreditGrant.total - CreditGrant.used), 0),
             func.min(CreditGrant.expires_at),
-        ).where(
+        )
+        .where(
             and_(
                 CreditGrant.student_id == student_id,
                 CreditGrant.expires_at > now,
                 CreditGrant.used < CreditGrant.total,
             )
         )
+        .group_by(CreditGrant.lesson_minutes)
     )
-    remaining, soonest = result.one()
-    return {"credits_remaining": int(remaining), "credits_expire_at": soonest}
+    by_length = {"30": 0, "60": 0}
+    soonest = None
+    for minutes, remaining, expires in result.all():
+        by_length[str(minutes)] = int(remaining)
+        if soonest is None or expires < soonest:
+            soonest = expires
+    return {
+        "credits_remaining": sum(by_length.values()),
+        "credits_by_length": by_length,
+        "credits_expire_at": soonest,
+    }
 
 
 async def trial_available(db: AsyncSession, student_id: uuid.UUID) -> bool:

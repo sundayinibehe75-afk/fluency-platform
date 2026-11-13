@@ -24,6 +24,7 @@ class PriceConfig(Base):
     # Monthly plans: number of lessons granted each month (None = single lesson)
     lessons_per_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Hidden products stay in the table for old bookings but aren't offered
+    lesson_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60, server_default="60")
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )

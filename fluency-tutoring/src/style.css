@@ -1795,7 +1795,8 @@ footer :focus-visible,
   gap: 0.25rem;
 }
 
-.admin-credits-form input {
+.admin-credits-form input,
+.admin-credits-form select {
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -2464,4 +2465,63 @@ form.admin-rate {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.booking-length {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.booking-length > span {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.booking-length-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.booking-length-btn.selected {
+  border-color: var(--red);
+  background: #fff5f5;
+  font-weight: 600;
+}
+
+.booking-length-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pricing-length {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin: 0 0 2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.pricing-length-btn {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+}
+
+.pricing-length-btn.selected {
+  background: var(--red);
+  color: #fff;
 }

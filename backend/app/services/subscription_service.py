@@ -78,6 +78,7 @@ async def list_prices(db: AsyncSession) -> list[dict]:
             "price_cents": p.price_cents,
             "currency": p.currency,
             "lessons_per_month": p.lessons_per_month,
+            "lesson_minutes": p.lesson_minutes,
             "is_plan": p.lessons_per_month is not None,
         }
         for p in result.scalars()
@@ -231,6 +232,7 @@ async def my_plan(db: AsyncSession, student_id: uuid.UUID) -> dict:
             "label": price.label if price else sub.product_key,
             "price_cents": price.price_cents if price else None,
             "lessons_per_month": price.lessons_per_month if price else None,
+            "lesson_minutes": price.lesson_minutes if price else 60,
             "status": sub.status,
             "cancel_at_period_end": sub.cancel_at_period_end,
             "current_period_end": sub.current_period_end,
@@ -358,6 +360,7 @@ async def handle_invoice_paid(invoice: dict, db: AsyncSession) -> None:
         subscription_id=sub.id,
         stripe_invoice_id=invoice_id,
         amount_cents=invoice.get("amount_paid"),
+        lesson_minutes=plan.lesson_minutes,
     )
 
 
