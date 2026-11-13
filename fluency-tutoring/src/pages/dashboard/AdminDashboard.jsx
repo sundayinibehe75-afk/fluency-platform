@@ -434,6 +434,8 @@ function StudentCredits({ student, onChanged }) {
                   <td className="admin-credits-actions">
                     {g.total === 0 ? (
                       <span className="admin-muted">Removed</span>
+                    ) : g.remaining === 0 ? (
+                      <span className="admin-muted">All used</span>
                     ) : (
                       <button className="btn btn-outline-dark btn-sm" onClick={() => extend(g)}>
                         Extend
