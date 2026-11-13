@@ -41,6 +41,7 @@ VALID_TEMPLATES = {
     "lesson_notes",
     "weekly_confirmation",
     "credits_expiring",
+    "plan_notice",
 }
 
 
@@ -160,4 +161,6 @@ def _get_subject(template_name: str, context: dict) -> str:
         "weekly_confirmation": "Your Weekly Lessons Are Booked",
         "credits_expiring": "Your Lessons Expire Soon",
     }
+    if context.get("subject"):
+        return context["subject"]
     return subjects.get(template_name, "Fluency German")

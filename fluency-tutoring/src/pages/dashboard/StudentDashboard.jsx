@@ -36,11 +36,15 @@ function PlanCard({ account, onCancel, onResume, busy }) {
               </p>
               <p className="plan-card-meta">
                 {plan.cancel_at_period_end
-                  ? `Cancelled. Your plan ends on ${formatDate(plan.current_period_end)} and won't renew.`
+                  ? `Renewal is off. Your lessons stay valid until ${formatDate(plan.current_period_end)}.`
                   : plan.current_period_end
-                    ? `Renews on ${formatDate(plan.current_period_end)}.`
+                    ? `Renews automatically on ${formatDate(plan.current_period_end)}` +
+                      (plan.card_label ? ` with your ${plan.card_label}.` : '.')
                     : 'Active.'}
-                {plan.status === 'past_due' && ' Your last payment failed. Please update your card with Stripe.'}
+                {plan.status === 'past_due' &&
+                  (plan.provider === 'paystack'
+                    ? " Your last renewal payment didn't go through. We'll try again tomorrow."
+                    : ' Your last payment failed. Please update your card with Stripe.')}
               </p>
             </>
           ) : (
@@ -69,12 +73,12 @@ function PlanCard({ account, onCancel, onResume, busy }) {
         )}
         {plan && !plan.cancel_at_period_end && (
           <button className="btn btn-cancel btn-sm" onClick={onCancel} disabled={busy}>
-            Cancel plan
+            {plan.provider === 'paystack' ? 'Turn off renewal' : 'Cancel plan'}
           </button>
         )}
         {plan && plan.cancel_at_period_end && (
           <button className="btn btn-outline-dark btn-sm" onClick={onResume} disabled={busy}>
-            Keep my plan
+            {plan.provider === 'paystack' ? 'Turn renewal back on' : 'Keep my plan'}
           </button>
         )}
       </div>
@@ -271,7 +275,9 @@ export default function StudentDashboard() {
     if (
       action === 'cancel' &&
       !window.confirm(
-        'Cancel your plan? It will not renew. You keep your remaining lessons until the end of this month.'
+        account?.plan?.provider === 'paystack'
+          ? 'Turn off automatic renewal? Your card will not be charged again. You keep your remaining lessons until they expire.'
+          : 'Cancel your plan? It will not renew. You keep your remaining lessons until the end of this month.'
       )
     )
       return

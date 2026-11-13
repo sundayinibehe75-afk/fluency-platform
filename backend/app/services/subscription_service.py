@@ -119,10 +119,13 @@ async def get_live_subscription(db: AsyncSession, student_id: uuid.UUID) -> Subs
 # ---------------------------------------------------------------------------
 
 
-async def create_checkout(db: AsyncSession, student: User, product_key: str) -> dict:
+async def create_checkout(
+    db: AsyncSession, student: User, product_key: str, auto_renew: bool = False
+) -> dict:
     """Start paying for a monthly plan.
 
-    Paystack: a prepaid package (paid once, lessons valid for 30 days).
+    Paystack: a month of lessons (valid 30 days); renews monthly only if the
+    student ticked auto_renew.
     Stripe: an auto-renewing subscription.
     """
     plan = await _get_plan(db, product_key)
@@ -130,7 +133,7 @@ async def create_checkout(db: AsyncSession, student: User, product_key: str) -> 
     if settings.payment_provider == "paystack":
         from app.services import paystack_service
 
-        return {"session_url": await paystack_service.start_package_payment(db, student, plan)}
+        return {"session_url": await paystack_service.start_package_payment(db, student, plan, auto_renew)}
 
     if await get_live_subscription(db, student.id) is not None:
         raise HTTPException(
@@ -186,7 +189,8 @@ async def cancel_subscription(db: AsyncSession, student: User) -> dict:
             detail={"error": "NOT_FOUND", "detail": "You don't have an active plan."},
         )
     if not sub.cancel_at_period_end:
-        stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=True)
+        if sub.provider == "stripe":
+            stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=True)
         sub.cancel_at_period_end = True
         await db.flush()
     logger.info("Plan cancelled at period end", extra={"student_id": str(student.id)})
@@ -202,7 +206,13 @@ async def resume_subscription(db: AsyncSession, student: User) -> dict:
             detail={"error": "NOT_FOUND", "detail": "You don't have an active plan."},
         )
     if sub.cancel_at_period_end:
-        stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=False)
+        if sub.provider == "stripe":
+            stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=False)
+        elif sub.current_period_end and sub.current_period_end <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error": "PLAN_ENDED", "detail": "This plan has ended. Choose a new plan on the Pricing page."},
+            )
         sub.cancel_at_period_end = False
         await db.flush()
     return await my_plan(db, student.id)
@@ -224,6 +234,8 @@ async def my_plan(db: AsyncSession, student_id: uuid.UUID) -> dict:
             "status": sub.status,
             "cancel_at_period_end": sub.cancel_at_period_end,
             "current_period_end": sub.current_period_end,
+            "provider": sub.provider,
+            "card_label": sub.card_label,
         }
     summary = await credit_service.credit_summary(db, student_id)
     return {

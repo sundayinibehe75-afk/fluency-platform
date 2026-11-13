@@ -2425,3 +2425,37 @@ form.admin-rate {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+
+.pricing-renew {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  max-width: 34rem;
+  margin: 0 auto 1.75rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pricing-renew input {
+  margin-top: 0.25rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary, #c00);
+  flex-shrink: 0;
+}
+
+.pricing-renew span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pricing-renew small {
+  color: var(--text-muted, #666);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}

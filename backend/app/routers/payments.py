@@ -55,7 +55,7 @@ async def payment_config(db: AsyncSession = Depends(get_db)) -> dict:
         "provider": settings.payment_provider,
         "charge_currency": "NGN" if settings.payment_provider == "paystack" else "USD",
         "ngn_per_usd": float(rate) if rate is not None else None,
-        "auto_renew": settings.payment_provider == "stripe",
+        "auto_renew": True,  # Stripe: always; Paystack: the student chooses
     }
 
 

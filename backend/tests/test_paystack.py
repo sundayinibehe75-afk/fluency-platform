@@ -271,3 +271,161 @@ async def test_payment_from_an_earlier_attempt_still_confirms_and_a_second_is_re
         (await db.execute(select(Payment.status).where(Payment.booking_id == booking.id))).scalars().all()
     )
     assert statuses == ["duplicate", "succeeded"]
+
+
+# ---------------------------------------------------------------------------
+# Automatic renewal
+# ---------------------------------------------------------------------------
+
+REUSABLE_CARD = {"authorization_code": "AUTH_test123", "reusable": True, "brand": "visa", "last4": "4081"}
+
+
+async def _auto_plan(db, student, reference="fg_pk_auto_1"):
+    """Student buys plan_2x with 'Renew automatically' ticked; returns the Subscription."""
+    from app.models.subscription import Subscription
+    from app.services import paystack_service
+
+    meta = {"kind": "package", "student_id": str(student.id), "product_key": "plan_2x", "auto_renew": True}
+    assert await paystack_service.process_successful_charge(
+        db, {"status": "success", "reference": reference, "metadata": meta, "authorization": REUSABLE_CARD}
+    ) == "package_granted"
+    return (await db.execute(select(Subscription).where(Subscription.student_id == student.id))).scalar_one()
+
+
+async def _make_due(db, sub, days_ago=0):
+    from datetime import datetime, timezone
+
+    sub.current_period_end = datetime.now(timezone.utc) - timedelta(days=days_ago, minutes=1)
+    sub.reminder_sent_for = sub.current_period_end
+    await db.flush()
+
+
+async def test_auto_renew_purchase_saves_the_card_and_shows_on_the_dashboard(db):
+    from app.services import subscription_service
+
+    student = await _user(db)
+    sub = await _auto_plan(db, student)
+    assert (sub.provider, sub.status, sub.card_label) == ("paystack", "active", "Visa ending 4081")
+    assert sub.paystack_authorization_code == "AUTH_test123"
+
+    info = await subscription_service.my_plan(db, student.id)
+    assert info["plan"]["product_key"] == "plan_2x" and info["plan"]["card_label"] == "Visa ending 4081"
+    assert info["plan"]["cancel_at_period_end"] is False
+
+
+async def test_package_without_auto_renew_or_reusable_card_does_not_renew(db):
+    from app.models.subscription import Subscription
+    from app.services import paystack_service
+
+    student = await _user(db)
+    for ref, auto, card in (("fg_pk_once", False, REUSABLE_CARD), ("fg_pk_bank", True, {"reusable": False})):
+        meta = {"kind": "package", "student_id": str(student.id), "product_key": "plan_2x", "auto_renew": auto}
+        await paystack_service.process_successful_charge(
+            db, {"status": "success", "reference": ref, "metadata": meta, "authorization": card}
+        )
+    assert (await db.execute(select(Subscription).where(Subscription.student_id == student.id))).first() is None
+
+
+async def test_second_auto_renewing_plan_is_refused(db):
+    from app.services import paystack_service, subscription_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student = await _user(db)
+    await _auto_plan(db, student)
+    with pytest.raises(HTTPException) as exc:
+        await subscription_service.create_checkout(db, student, "plan_3x", auto_renew=True)
+    assert exc.value.detail["error"] == "PLAN_EXISTS"
+    # Buying an extra month without renewal is still fine
+    with patch.object(paystack_service, "_api", AsyncMock(return_value={"authorization_url": "https://pay"})):
+        await subscription_service.create_checkout(db, student, "plan_3x", auto_renew=False)
+
+
+async def test_due_plan_is_charged_and_continues_without_a_gap(db):
+    from app.models.credit_grant import CreditGrant
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student = await _user(db)
+    sub = await _auto_plan(db, student)
+    await _make_due(db, sub)
+    old_end = sub.current_period_end
+
+    charge = AsyncMock(return_value={"status": "success", "authorization": REUSABLE_CARD})
+    with patch.object(paystack_service, "_api", charge), _quiet() as (email, _):
+        assert await paystack_service.renew_due_plans(db) == 1
+    path, body = charge.call_args.args[1:]
+    assert path == "/transaction/charge_authorization"
+    assert body["authorization_code"] == "AUTH_test123" and body["amount"] == 7600 * 1500
+
+    grants = (await db.execute(select(CreditGrant).where(CreditGrant.student_id == student.id))).scalars().all()
+    assert len(grants) == 2
+    renewal = next(g for g in grants if g.payment_reference.startswith("fg_rn_"))
+    assert renewal.expires_at == old_end + timedelta(days=paystack_service.PACKAGE_DAYS)
+    assert sub.current_period_end == renewal.expires_at and sub.status == "active"
+    assert email.call_args.kwargs["context"]["subject"] == "Your plan has renewed"
+
+    # Not due any more: running again charges nothing
+    with patch.object(paystack_service, "_api", charge):
+        assert await paystack_service.renew_due_plans(db) == 0
+    assert charge.await_count == 1
+
+
+async def test_failed_renewal_retries_daily_then_stops(db):
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student = await _user(db)
+    sub = await _auto_plan(db, student)
+    await _make_due(db, sub)
+
+    declined = AsyncMock(return_value={"status": "failed", "gateway_response": "Insufficient Funds"})
+    subjects = []
+    for attempt in range(1, 4):
+        with patch.object(paystack_service, "_api", declined), _quiet() as (email, _):
+            await paystack_service.renew_due_plans(db)
+            await paystack_service.renew_due_plans(db)  # same day: no second charge
+        subjects.append(email.call_args.kwargs["context"]["subject"])
+        assert declined.await_count == attempt
+        sub.last_charge_attempt_at -= paystack_service.RETRY_AFTER  # a day passes
+
+    assert sub.status == "canceled" and sub.renewal_failures == 3
+    assert subjects == ["Your plan renewal payment failed"] * 2 + ["Your plan has stopped"]
+
+
+async def test_turned_off_plan_is_never_charged_and_ends(db):
+    from app.services import paystack_service, subscription_service
+
+    student = await _user(db)
+    sub = await _auto_plan(db, student)
+    info = await subscription_service.cancel_subscription(db, student)
+    assert info["plan"]["cancel_at_period_end"] is True
+    await _make_due(db, sub)
+
+    api = AsyncMock()
+    with patch.object(paystack_service, "_api", api):
+        await paystack_service.renew_due_plans(db)
+    api.assert_not_awaited()
+    assert sub.status == "canceled"
+    with pytest.raises(HTTPException):
+        await subscription_service.resume_subscription(db, student)  # no live plan any more
+
+
+async def test_reminder_is_sent_once_before_renewal(db):
+    from datetime import datetime, timezone
+
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student = await _user(db)
+    sub = await _auto_plan(db, student)
+    sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=2)
+    await db.flush()
+
+    with patch.object(paystack_service, "_api", AsyncMock()) as api, _quiet() as (email, _):
+        await paystack_service.renew_due_plans(db)
+        await paystack_service.renew_due_plans(db)
+    api.assert_not_awaited()
+    assert email.call_count == 1
+    context = email.call_args.kwargs["context"]
+    assert context["subject"] == "Your lessons renew soon"
+    assert "Visa ending 4081" in context["body_text"] and "₦114,000" in context["body_text"]

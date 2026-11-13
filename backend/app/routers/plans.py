@@ -20,6 +20,7 @@ router = APIRouter(tags=["plans"])
 
 class PlanCheckoutRequest(BaseModel):
     product_key: str
+    auto_renew: bool = False
 
 
 @router.get("/plans")
@@ -41,7 +42,7 @@ async def plan_checkout(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("student")),
 ) -> dict:
-    return await subscription_service.create_checkout(db, current_user, body.product_key)
+    return await subscription_service.create_checkout(db, current_user, body.product_key, body.auto_renew)
 
 
 @router.post("/subscriptions/me/cancel")

@@ -26,7 +26,10 @@ export default function Pricing() {
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
   const payConfig = usePaymentConfig()
-  const autoRenew = payConfig ? payConfig.auto_renew : false
+  // Paystack: the student chooses whether the plan renews. Stripe: always renews.
+  const studentChooses = payConfig?.provider === 'paystack'
+  const [renewChoice, setRenewChoice] = useState(false)
+  const autoRenew = studentChooses ? renewChoice : payConfig ? payConfig.auto_renew : false
 
   useEffect(() => {
     api.get('/plans').then((res) => res.data?.length && setPrices(res.data)).catch(() => {})
@@ -46,7 +49,7 @@ export default function Pricing() {
     if (user.role !== 'student') return setError('Plans are for student accounts.')
     try {
       setBusy(plan.product_key)
-      const res = await api.post('/subscriptions/checkout', { product_key: plan.product_key })
+      const res = await api.post('/subscriptions/checkout', { product_key: plan.product_key, auto_renew: studentChooses && renewChoice })
       window.location.href = res.data.session_url
     } catch (err) {
       setError(getErrorMessage(err, 'Could not start checkout. Please try again.'))
@@ -101,10 +104,21 @@ export default function Pricing() {
         <h3 className="pricing-plans-title">Monthly plans</h3>
         <p className="section-sub pricing-plans-sub">
           Choose how many lessons a week and pick your own times.{' '}
-          {autoRenew
-            ? 'Renews monthly until you cancel. Unused lessons expire at the end of each month.'
-            : 'Pay once for a month of lessons, with no automatic charges. Unused lessons expire after 30 days, and we remind you before they do.'}
+          {studentChooses
+            ? 'Pay for a month of lessons. Unused lessons expire after 30 days, and we remind you before they do.'
+            : autoRenew
+              ? 'Renews monthly until you cancel. Unused lessons expire at the end of each month.'
+              : 'Pay once for a month of lessons, with no automatic charges. Unused lessons expire after 30 days, and we remind you before they do.'}
         </p>
+        {studentChooses && (
+          <label className="pricing-renew">
+            <input type="checkbox" checked={renewChoice} onChange={(e) => setRenewChoice(e.target.checked)} />
+            <span>
+              <strong>Renew automatically each month</strong>
+              <small>Your card is charged when the month ends. We email you 3 days before, and you can turn it off anytime in your dashboard.</small>
+            </span>
+          </label>
+        )}
         {error && <p className="pricing-error" role="alert">{error}</p>}
         <div className="pricing-grid pricing-grid--plans">
           {plans.map((p) => {
@@ -122,7 +136,7 @@ export default function Pricing() {
                 <ul className="pricing-features">
                   <li>${dollars(perLesson)} per lesson</li>
                   <li>Reschedule up to 12h before</li>
-                  <li>{autoRenew ? 'Cancel anytime' : 'No automatic renewal'}</li>
+                  <li>{autoRenew ? 'Renews monthly, cancel anytime' : 'No automatic renewal'}</li>
                 </ul>
                 <button
                   className="btn btn-primary"
