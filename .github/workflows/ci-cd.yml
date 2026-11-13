@@ -142,9 +142,17 @@ jobs:
              cd ~/fluency-platform && git pull origin main && \
              export IMAGE_TAG=${{ github.sha }} && \
              docker compose pull api frontend && \
+             docker logout ghcr.io && \
              docker compose up -d --no-build"
 
+      # Check the real API over HTTPS (not just the HTTP redirect). The API
+      # runs migrations on start, so allow up to ~2 minutes.
       - name: Health check
         run: |
-          sleep 15
-          curl -fsS "http://${{ secrets.DEPLOY_HOST }}/" > /dev/null && echo "Site is up"
+          for i in $(seq 1 12); do
+            if curl -fsS https://fluencygerman.com/api/health | grep -q '"ok"'; then
+              echo "Site is up"; exit 0
+            fi
+            echo "Not ready yet ($i/12)"; sleep 10
+          done
+          echo "Health check failed"; exit 1
