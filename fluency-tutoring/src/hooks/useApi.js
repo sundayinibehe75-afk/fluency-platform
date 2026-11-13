@@ -15,9 +15,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    // A 401 from a normal page means the login expired: clear it and go to
+    // the login page. But a 401 from the login/register/reset forms just
+    // means wrong details, which the form itself shows; reloading the page
+    // there would hide the error message.
+    const url = error.config?.url || ''
+    const isAuthForm = url.startsWith('/auth/')
+    if (error.response && error.response.status === 401 && !isAuthForm) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      if (window.location.pathname !== '/login') {
+        const next = encodeURIComponent(window.location.pathname + window.location.search)
+        window.location.href = `/login?next=${next}`
+      }
     }
     return Promise.reject(error)
   }
