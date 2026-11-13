@@ -2400,6 +2400,17 @@ form.admin-rate {
   flex-direction: row;
 }
 
+.admin-rate-status {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.admin-rate-status.warn {
+  color: var(--primary, #c00);
+  font-weight: 600;
+}
+
 .admin-rate label {
   display: flex;
   flex-direction: column;

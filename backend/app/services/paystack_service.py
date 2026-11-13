@@ -2,7 +2,7 @@
 
 How it works:
 - Prices stay in US dollars (price_configs). At checkout the dollar price is
-  converted to naira with the rate the admin sets (app_settings.ngn_per_usd),
+  converted to naira at the live market rate (plus any admin markup),
   because a Nigerian Paystack account charges in NGN. The student's bank
   converts it to their own currency.
 - We start a transaction on Paystack and send the student to its payment page
@@ -47,33 +47,126 @@ CURRENCY = "NGN"
 
 # ---------------------------------------------------------------------------
 # Exchange rate
+#
+# The naira rate comes from a live market feed (open.er-api.com, free, no key,
+# updated daily) and is cached in app_settings for LIVE_TTL. The admin can add
+# a markup % on top (e.g. to cover card fees). The admin's own saved rate is a
+# backup, used only when the feed has been unreachable for longer than
+# LIVE_MAX_AGE.
 # ---------------------------------------------------------------------------
+
+LIVE_URL = "https://open.er-api.com/v6/latest/USD"
+LIVE_KEY = "ngn_per_usd_live"
+LIVE_AT_KEY = "ngn_per_usd_live_at"
+MARKUP_KEY = "rate_markup_pct"
+LIVE_TTL = timedelta(hours=6)
+LIVE_MAX_AGE = timedelta(days=3)
+MIN_RATE, MAX_RATE = Decimal("100"), Decimal("100000")
+
+
+async def _get_setting(db: AsyncSession, key: str) -> str | None:
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == key))).scalar_one_or_none()
+    return row.value if row else None
+
+
+async def _put_setting(db: AsyncSession, key: str, value: str) -> None:
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == key))).scalar_one_or_none()
+    if row is None:
+        db.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+    await db.flush()
+
+
+def _decimal(value: str | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        return None
+
+
+async def _fetch_live_rate() -> Decimal | None:
+    """Today's market naira rate for one US dollar, or None if unavailable."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(LIVE_URL)
+        data = resp.json()
+        if resp.status_code != 200 or data.get("result") != "success":
+            logger.warning("Live rate feed returned %s", resp.status_code)
+            return None
+        rate = Decimal(str(data["rates"]["NGN"]))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, InvalidOperation) as exc:
+        logger.warning("Live rate feed failed: %s", exc)
+        return None
+    return rate if MIN_RATE <= rate <= MAX_RATE else None
+
+
+async def get_rate_info(db: AsyncSession) -> dict:
+    """The rate used at checkout and where it came from.
+
+    rate        — naira per dollar charged (live x markup, or the backup rate)
+    source      — "live", "backup" or None (no usable rate)
+    """
+    now = datetime.now(timezone.utc)
+    live = _decimal(await _get_setting(db, LIVE_KEY))
+    live_at_raw = await _get_setting(db, LIVE_AT_KEY)
+    live_at = datetime.fromisoformat(live_at_raw) if live_at_raw else None
+
+    if live is None or live_at is None or now - live_at > LIVE_TTL:
+        fresh = await _fetch_live_rate()
+        if fresh is not None:
+            live, live_at = fresh, now
+            await _put_setting(db, LIVE_KEY, str(fresh))
+            await _put_setting(db, LIVE_AT_KEY, now.isoformat())
+
+    markup = _decimal(await _get_setting(db, MARKUP_KEY)) or Decimal("0")
+    backup = _decimal(await _get_setting(db, RATE_KEY))
+    if backup is not None and backup <= 0:
+        backup = None
+
+    if live is not None and live_at is not None and now - live_at <= LIVE_MAX_AGE:
+        rate = (live * (1 + markup / 100)).quantize(Decimal("0.01"))
+        source = "live"
+    elif backup is not None:
+        rate, source = backup, "backup"
+    else:
+        rate, source = None, None
+
+    return {
+        "rate": rate,
+        "source": source,
+        "live_rate": live,
+        "live_updated_at": live_at,
+        "markup_pct": markup,
+        "backup_rate": backup,
+    }
 
 
 async def get_rate(db: AsyncSession) -> Decimal | None:
-    row = (await db.execute(select(AppSetting).where(AppSetting.key == RATE_KEY))).scalar_one_or_none()
-    if row is None:
-        return None
-    try:
-        rate = Decimal(row.value)
-    except InvalidOperation:
-        return None
-    return rate if rate > 0 else None
+    return (await get_rate_info(db))["rate"]
 
 
 async def set_rate(db: AsyncSession, rate: Decimal) -> Decimal:
-    if rate <= 0 or rate > 100000:
+    """Save the admin's backup rate (used only when the live feed is down)."""
+    if rate < MIN_RATE or rate > MAX_RATE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "VALIDATION_ERROR", "detail": "Enter a realistic naira rate, e.g. 1500."},
         )
-    row = (await db.execute(select(AppSetting).where(AppSetting.key == RATE_KEY))).scalar_one_or_none()
-    if row is None:
-        db.add(AppSetting(key=RATE_KEY, value=str(rate)))
-    else:
-        row.value = str(rate)
-    await db.flush()
+    await _put_setting(db, RATE_KEY, str(rate))
     return rate
+
+
+async def set_markup(db: AsyncSession, pct: Decimal) -> Decimal:
+    if pct < 0 or pct > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "VALIDATION_ERROR", "detail": "Markup must be between 0 and 20%."},
+        )
+    await _put_setting(db, MARKUP_KEY, str(pct))
+    return pct
 
 
 async def _require_rate(db: AsyncSession) -> Decimal:

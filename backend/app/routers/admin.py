@@ -25,7 +25,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 class ExchangeRate(BaseModel):
-    ngn_per_usd: Decimal = Field(gt=0, le=100000)
+    backup_rate: Optional[Decimal] = Field(default=None, ge=100, le=100000)
+    markup_pct: Optional[Decimal] = Field(default=None, ge=0, le=20)
 
 
 class AddCredits(BaseModel):
@@ -39,15 +40,29 @@ class UpdateGrant(BaseModel):
     add_lessons: Optional[int] = Field(default=None, ge=-100, le=100)
 
 
+def _rate_out(info: dict) -> dict:
+    def num(v):
+        return float(v) if v is not None else None
+
+    return {
+        "ngn_per_usd": num(info["rate"]),
+        "source": info["source"],
+        "live_rate": num(info["live_rate"]),
+        "live_updated_at": info["live_updated_at"].isoformat() if info["live_updated_at"] else None,
+        "markup_pct": num(info["markup_pct"]),
+        "backup_rate": num(info["backup_rate"]),
+    }
+
+
 @router.get("/settings/exchange-rate")
 async def get_exchange_rate(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role("admin")),
 ) -> dict:
+    """The naira rate used at checkout: live market rate plus markup."""
     from app.services import paystack_service
 
-    rate = await paystack_service.get_rate(db)
-    return {"ngn_per_usd": float(rate) if rate is not None else None}
+    return _rate_out(await paystack_service.get_rate_info(db))
 
 
 @router.put("/settings/exchange-rate")
@@ -56,11 +71,14 @@ async def set_exchange_rate(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role("admin")),
 ) -> dict:
-    """Naira per US dollar, used to charge dollar prices in naira (Paystack)."""
+    """Set the markup % and/or the backup rate (used if the live feed is down)."""
     from app.services import paystack_service
 
-    rate = await paystack_service.set_rate(db, body.ngn_per_usd)
-    return {"ngn_per_usd": float(rate)}
+    if body.markup_pct is not None:
+        await paystack_service.set_markup(db, body.markup_pct)
+    if body.backup_rate is not None:
+        await paystack_service.set_rate(db, body.backup_rate)
+    return _rate_out(await paystack_service.get_rate_info(db))
 
 
 @router.get("/stats")

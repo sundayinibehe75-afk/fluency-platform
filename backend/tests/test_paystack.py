@@ -35,6 +35,13 @@ def _paystack_settings():
     settings.payment_provider, settings.paystack_secret_key = old
 
 
+@pytest.fixture(autouse=True)
+def _no_live_rate():
+    """No network in tests: the live feed is 'down' unless a test says otherwise."""
+    with patch("app.services.paystack_service._fetch_live_rate", AsyncMock(return_value=None)) as fake:
+        yield fake
+
+
 def _signed(event: dict) -> tuple[bytes, str]:
     raw = json.dumps(event).encode()
     return raw, hmac.new(SECRET.encode(), raw, hashlib.sha512).hexdigest()
@@ -173,3 +180,44 @@ async def test_package_checkout_uses_paystack(db):
         result = await subscription_service.create_checkout(db, student, "plan_2x")
     assert result == {"session_url": "https://checkout.paystack.com/pk"}
     assert api.call_args.args[2]["amount"] == 7600 * 1600  # $76 at N1600/$
+
+
+async def test_live_rate_with_markup_is_used_and_cached(db, _no_live_rate):
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1400"))  # backup, should be ignored
+    await paystack_service.set_markup(db, Decimal("2"))
+    _no_live_rate.return_value = Decimal("1500")
+
+    info = await paystack_service.get_rate_info(db)
+    assert info["source"] == "live"
+    assert info["rate"] == Decimal("1530.00")  # 1500 + 2%
+    await paystack_service.get_rate_info(db)
+    assert _no_live_rate.await_count == 1  # cached, not fetched again
+
+    student, booking = await _pending_booking(db)
+    with patch.object(paystack_service, "_api", AsyncMock(return_value={"authorization_url": "https://pay"})) as api:
+        await paystack_service.start_booking_payment(db, booking, student)
+    assert api.call_args.args[2]["amount"] == booking.price_cents * 1530
+
+
+async def test_falls_back_to_backup_when_live_rate_is_too_old(db, _no_live_rate):
+    from datetime import datetime, timezone
+
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1450"))
+    old = datetime.now(timezone.utc) - paystack_service.LIVE_MAX_AGE - timedelta(hours=1)
+    await paystack_service._put_setting(db, paystack_service.LIVE_KEY, "1500")
+    await paystack_service._put_setting(db, paystack_service.LIVE_AT_KEY, old.isoformat())
+
+    info = await paystack_service.get_rate_info(db)  # feed is down (returns None)
+    assert _no_live_rate.await_count == 1
+    assert (info["source"], info["rate"]) == ("backup", Decimal("1450"))
+
+
+async def test_markup_must_be_reasonable(db):
+    from app.services import paystack_service
+
+    with pytest.raises(HTTPException):
+        await paystack_service.set_markup(db, Decimal("50"))

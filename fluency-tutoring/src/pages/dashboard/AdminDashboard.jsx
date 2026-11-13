@@ -18,42 +18,63 @@ const PLAN_NAMES = { plan_2x: '2× a week', plan_3x: '3× a week', plan_4x: '4×
 
 function ExchangeRateSetting() {
   const api = useApi()
-  const [rate, setRate] = useState('')
-  const [saved, setSaved] = useState(null)
+  const [info, setInfo] = useState(null)
+  const [markup, setMarkup] = useState('')
+  const [backup, setBackup] = useState('')
   const [message, setMessage] = useState('')
 
+  function load(data) {
+    setInfo(data)
+    setMarkup(data.markup_pct ?? 0)
+    setBackup(data.backup_rate ?? '')
+  }
+
   useEffect(() => {
-    api.get('/admin/settings/exchange-rate').then((res) => {
-      setSaved(res.data.ngn_per_usd)
-      setRate(res.data.ngn_per_usd ?? '')
-    }).catch(() => {})
+    api.get('/admin/settings/exchange-rate').then((res) => load(res.data)).catch(() => {})
   }, [])
 
   async function save(e) {
     e.preventDefault()
     setMessage('')
+    const body = { markup_pct: Number(markup || 0) }
+    if (backup !== '') body.backup_rate = Number(backup)
     try {
-      const res = await api.put('/admin/settings/exchange-rate', { ngn_per_usd: Number(rate) })
-      setSaved(res.data.ngn_per_usd)
+      const res = await api.put('/admin/settings/exchange-rate', body)
+      load(res.data)
       setMessage('Saved.')
     } catch (err) {
       setMessage(getErrorMessage(err, 'Could not save.'))
     }
   }
 
+  const naira = (n) => `₦${Math.round(n).toLocaleString('en-NG')}`
+  let status = 'Loading the live rate...'
+  if (info) {
+    if (info.source === 'live') {
+      const when = new Date(info.live_updated_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+      status = `Live rate ${naira(info.live_rate)}/$ (updated ${when})` +
+        (info.markup_pct ? ` + ${info.markup_pct}% markup` : '') +
+        `. A $10 lesson is charged ${naira(10 * info.ngn_per_usd)}.`
+    } else if (info.source === 'backup') {
+      status = `Live rate unavailable, using your backup rate. A $10 lesson is charged ${naira(10 * info.ngn_per_usd)}.`
+    } else {
+      status = 'Live rate unavailable and no backup rate set: payments are paused.'
+    }
+  }
+
   return (
     <form className="admin-rate" onSubmit={save}>
+      <p className={`admin-rate-status${info && info.source !== 'live' ? ' warn' : ''}`}>{status}</p>
       <label>
-        Naira per US dollar
-        <input type="number" min="1" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} required />
+        Markup %
+        <input type="number" min="0" max="20" step="0.1" value={markup} onChange={(e) => setMarkup(e.target.value)} />
       </label>
-      <button type="submit" className="btn btn-primary btn-sm">Save rate</button>
-      <span className="admin-muted">
-        {saved
-          ? `A $10 lesson is charged ₦${Math.round(10 * saved).toLocaleString('en-NG')}.`
-          : 'Set this before taking payments: dollar prices are charged in naira at this rate.'}
-        {message && ` ${message}`}
-      </span>
+      <label>
+        Backup rate (₦ per $)
+        <input type="number" min="100" step="0.01" placeholder="only if live fails" value={backup} onChange={(e) => setBackup(e.target.value)} />
+      </label>
+      <button type="submit" className="btn btn-primary btn-sm">Save</button>
+      {message && <span className="admin-muted">{message}</span>}
     </form>
   )
 }
