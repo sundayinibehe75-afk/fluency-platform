@@ -7,6 +7,7 @@ import { toLocalTime, formatDate } from '../../utils/dateUtils'
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
+import { useBackForwardReset } from '../../hooks/useBackForwardReset'
 
 // Hardcoded tutor_id for v1 single-tutor setup — will be dynamic in v2
 const TUTOR_ID = import.meta.env.VITE_TUTOR_ID || '00000000-0000-0000-0000-000000000001'
@@ -55,6 +56,10 @@ export default function BookingCalendar() {
   const [error, setError] = useState(null)
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [booking, setBooking] = useState(false)
+  useBackForwardReset(() => {
+    setBooking(false)
+    setSelectedSlot(null)
+  })
 
   useEffect(() => {
     if (!user) {

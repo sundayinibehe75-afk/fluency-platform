@@ -122,6 +122,32 @@ async def update_grant(
     return _grant_dict(grant)
 
 
+async def remove_unused(db: AsyncSession, grant_id: uuid.UUID) -> dict:
+    """Take back a grant's unused lessons (e.g. added by mistake).
+
+    Lessons you added that were never used: the grant is deleted. Otherwise it
+    keeps the used lessons (so past bookings stay correct) and loses the rest;
+    paid grants stay on record so income figures don't change. No refund is
+    made for paid lessons.
+    """
+    grant = (
+        await db.execute(select(CreditGrant).where(CreditGrant.id == grant_id).with_for_update())
+    ).scalar_one_or_none()
+    if grant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "NOT_FOUND", "detail": "Credits not found."},
+        )
+    if grant.used == 0 and grant.source == "admin":
+        await db.delete(grant)
+        await db.flush()
+        return {"deleted": True, "removed": grant.total}
+    removed = grant.total - grant.used
+    grant.total = grant.used
+    await db.flush()
+    return {"deleted": False, "removed": removed}
+
+
 async def stats(db: AsyncSession, admin: User) -> dict:
     """Numbers for the admin overview. "This month" uses the admin's time zone."""
     from datetime import timedelta

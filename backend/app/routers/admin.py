@@ -7,6 +7,7 @@ Endpoints (admin only):
 - GET   /admin/students/{id}/credits          — a student's credit grants
 - POST  /admin/students/{id}/credits          — add lessons (e.g. a goodwill credit)
 - PATCH /admin/credits/{grant_id}             — extend expiry and/or add lessons
+- DELETE /admin/credits/{grant_id}            — remove the unused lessons of a grant
 """
 import uuid
 from datetime import datetime
@@ -124,3 +125,12 @@ async def update_grant(
     _: User = Depends(require_role("admin")),
 ) -> dict:
     return await admin_service.update_grant(db, grant_id, body.expires_at, body.add_lessons)
+
+
+@router.delete("/credits/{grant_id}")
+async def remove_grant(
+    grant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("admin")),
+) -> dict:
+    return await admin_service.remove_unused(db, grant_id)

@@ -4,6 +4,7 @@ import api from '../hooks/useApi'
 import { useAuth } from '../hooks/useAuth'
 import { getErrorMessage } from '../utils/errors'
 import { nairaHint, usePaymentConfig } from '../hooks/usePaymentConfig'
+import { useBackForwardReset } from '../hooks/useBackForwardReset'
 
 // Shown if the prices can't be loaded; the server's /api/plans is the source of truth
 const FALLBACK = [
@@ -26,6 +27,7 @@ export default function Pricing() {
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
   const payConfig = usePaymentConfig()
+  useBackForwardReset(() => setBusy(null))
   // Paystack: the student chooses whether the plan renews. Stripe: always renews.
   const studentChooses = payConfig?.provider === 'paystack'
   const [renewChoice, setRenewChoice] = useState(false)

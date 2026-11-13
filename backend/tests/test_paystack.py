@@ -429,3 +429,39 @@ async def test_reminder_is_sent_once_before_renewal(db):
     context = email.call_args.kwargs["context"]
     assert context["subject"] == "Your lessons renew soon"
     assert "Visa ending 4081" in context["body_text"] and "₦114,000" in context["body_text"]
+
+
+async def test_admin_can_remove_lessons_added_by_mistake(db):
+    from datetime import datetime, timezone
+
+    from app.models.credit_grant import CreditGrant
+    from app.services import admin_service, credit_service
+
+    student = await _user(db)
+    december = datetime(2027, 12, 31, tzinfo=timezone.utc)
+    mistake = await credit_service.grant_credits(db, student_id=student.id, total=1, expires_at=december, source="admin")
+    partly = await credit_service.grant_credits(db, student_id=student.id, total=4, expires_at=december, source="admin")
+    partly.used = 1
+    await db.flush()
+
+    assert await admin_service.remove_unused(db, mistake.id) == {"deleted": True, "removed": 1}
+    assert await db.get(CreditGrant, mistake.id) is None
+    assert await admin_service.remove_unused(db, partly.id) == {"deleted": False, "removed": 3}
+    assert (partly.total, partly.used) == (1, 1)
+
+
+async def test_two_open_auto_renew_checkouts_make_only_one_renewing_plan(db):
+    from app.models.credit_grant import CreditGrant
+    from app.models.subscription import Subscription
+
+    student = await _user(db)
+    from app.services import paystack_service
+
+    await _auto_plan(db, student, reference="fg_pk_tab1")
+    meta = {"kind": "package", "student_id": str(student.id), "product_key": "plan_2x", "auto_renew": True}
+    await paystack_service.process_successful_charge(
+        db, {"status": "success", "reference": "fg_pk_tab2", "metadata": meta, "authorization": REUSABLE_CARD}
+    )
+    subs = (await db.execute(select(Subscription).where(Subscription.student_id == student.id))).scalars().all()
+    grants = (await db.execute(select(CreditGrant).where(CreditGrant.student_id == student.id))).scalars().all()
+    assert len(subs) == 1 and len(grants) == 2  # both months given, one renewal

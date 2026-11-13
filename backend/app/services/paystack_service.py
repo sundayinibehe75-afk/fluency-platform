@@ -502,7 +502,11 @@ async def _grant_package(db: AsyncSession, reference: str, metadata: dict, data:
         renewing.last_charge_attempt_at = None
     elif metadata.get("auto_renew") in (True, "true", "True", 1):
         authorization = (data or {}).get("authorization") or {}
-        if authorization.get("reusable") and authorization.get("authorization_code"):
+        if await live_auto_plan(db, student_id) is not None:
+            # Two checkouts were open at once: the month is still given, but
+            # only one plan renews.
+            logger.info("Student already has a renewing plan; not adding another", extra={"reference": reference})
+        elif authorization.get("reusable") and authorization.get("authorization_code"):
             db.add(
                 Subscription(
                     student_id=student_id,

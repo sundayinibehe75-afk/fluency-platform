@@ -2459,3 +2459,9 @@ form.admin-rate {
   font-size: 0.85rem;
   line-height: 1.4;
 }
+
+.admin-credits-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}

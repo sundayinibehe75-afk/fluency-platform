@@ -378,6 +378,23 @@ function StudentCredits({ student, onChanged }) {
     }
   }
 
+  async function remove(grant) {
+    const paid = grant.source !== 'admin'
+    const ok = window.confirm(
+      `Remove the ${grant.remaining} unused lesson(s) from ${student.first_name || 'this student'}?` +
+        (paid ? ' These were paid for, and removing them does not refund the student.' : '')
+    )
+    if (!ok) return
+    try {
+      const res = await api.delete(`/admin/credits/${grant.id}`)
+      setMessage(`Removed ${res.data.removed} lesson(s).`)
+      load()
+      onChanged()
+    } catch (err) {
+      alert(getErrorMessage(err, 'Could not remove.'))
+    }
+  }
+
   const now = new Date()
   return (
     <div className="admin-credits">
@@ -414,10 +431,15 @@ function StudentCredits({ student, onChanged }) {
                   <td>{expired ? 0 : g.remaining}</td>
                   <td>{formatDate(g.expires_at)}{expired && ' (expired)'}</td>
                   <td>{g.note || ''}</td>
-                  <td>
+                  <td className="admin-credits-actions">
                     <button className="btn btn-outline-dark btn-sm" onClick={() => extend(g)}>
                       Extend
                     </button>
+                    {!expired && g.remaining > 0 && (
+                      <button className="btn btn-cancel btn-sm" onClick={() => remove(g)}>
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               )

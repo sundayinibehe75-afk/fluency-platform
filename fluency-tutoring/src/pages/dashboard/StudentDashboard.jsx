@@ -8,6 +8,7 @@ import { GOALS, LEVELS, allTimeZones, browserTimeZone, goalLabel } from '../../u
 import Nav from '../../components/Nav'
 import Footer from '../../components/Footer'
 import { getErrorMessage } from '../../utils/errors'
+import { useBackForwardReset } from '../../hooks/useBackForwardReset'
 
 const TYPE_LABELS = { trial: 'Free trial', plan: 'Plan', single: 'Single' }
 
@@ -220,6 +221,10 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState(null)
   const [payingId, setPayingId] = useState(null)
+  useBackForwardReset(() => {
+    setPayingId(null)
+    fetchBookings()
+  })
   const [account, setAccount] = useState(null)
   const [planBusy, setPlanBusy] = useState(false)
   const [params] = useSearchParams()
