@@ -1,5 +1,5 @@
 export const GOALS = [
-  { value: 'exam', label: 'Pass an exam (Goethe, telc, TestDaF)' },
+  { value: 'exam', label: 'Pass an exam (Goethe, telc)' },
   { value: 'work', label: 'German for work' },
   { value: 'study', label: 'Study in Germany' },
   { value: 'daily_life', label: 'Everyday life and travel' },

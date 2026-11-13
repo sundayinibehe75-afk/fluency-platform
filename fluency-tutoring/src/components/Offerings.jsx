@@ -33,7 +33,7 @@ const offerings = [
       </svg>
     ),
     title: 'Exam Preparation',
-    desc: 'Targeted prep for Goethe-Zertifikat, TestDaF, DSH, and other German language certifications.',
+    desc: 'Targeted prep for the Goethe-Zertifikat and telc exams, from A1 to B2.',
   },
   {
     icon: (

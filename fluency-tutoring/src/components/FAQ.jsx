@@ -3,7 +3,7 @@ import { useState } from 'react'
 const faqItems = [
   {
     question: 'What levels of German do you teach?',
-    answer: 'I teach all levels from complete beginner (A0) to advanced (C2). Each lesson is tailored to your current proficiency level and learning goals, whether you\'re preparing for a certification exam or building conversational fluency.'
+    answer: 'I teach from complete beginner (A0) up to upper intermediate (B2). Each lesson is tailored to your current proficiency level and learning goals, whether you\'re preparing for a certification exam or building conversational fluency.'
   },
   {
     question: 'How do online lessons work?',
@@ -19,15 +19,15 @@ const faqItems = [
   },
   {
     question: 'How long are the lessons and how often should I take them?',
-    answer: 'Lessons are 30 or 60 minutes: 30 minutes suits busy schedules and conversation practice, 60 minutes gives time for grammar and deeper work. For beginners, I recommend 2–3 sessions per week for steady progress. Intermediate and advanced learners often benefit from 1–2 sessions per week combined with self-study between lessons.'
+    answer: 'Lessons are 30 or 60 minutes: 30 minutes suits busy schedules and conversation practice, 60 minutes gives time for grammar and deeper work. For beginners, I recommend 2–3 sessions per week for steady progress. Intermediate learners often benefit from 1–2 sessions per week combined with self-study between lessons.'
   },
   {
     question: 'How do I pay, and do plans renew automatically?',
     answer: 'You pay securely by card through Paystack. Prices are in US dollars and charged in naira at the day\'s exchange rate; your bank converts it to your own currency. Monthly plans give you a month of lessons, valid for 30 days. They only renew if you tick "Renew automatically", and then you get an email 3 days before each renewal and can turn it off anytime in your dashboard.'
   },
   {
-    question: 'Do you help with exam preparation (Goethe, TestDaF, telc)?',
-    answer: 'Absolutely. I have extensive experience preparing students for all major German language exams including Goethe-Zertifikat (A1–C2), TestDaF, and telc. Lessons include practice with exam formats, timed exercises, and targeted feedback.'
+    question: 'Do you help with exam preparation (Goethe, telc)?',
+    answer: 'Yes. I prepare students for the Goethe-Zertifikat and telc exams from A1 to B2. Lessons include practice with the exam format, timed exercises and targeted feedback on your writing and speaking.'
   }
 ]
 
