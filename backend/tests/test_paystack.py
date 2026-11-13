@@ -221,3 +221,53 @@ async def test_markup_must_be_reasonable(db):
 
     with pytest.raises(HTTPException):
         await paystack_service.set_markup(db, Decimal("50"))
+
+
+async def test_student_can_go_back_to_payment_after_closing_the_page(db):
+    from app.models.booking import Booking
+    from app.services import booking_service, paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student, booking = await _pending_booking(db)
+
+    again = await booking_service.create_booking(db, student.id, booking.slot_id)
+    assert again.id == booking.id and again.status == "pending_payment"
+
+    active = (
+        await db.execute(select(Booking).where(Booking.slot_id == booking.slot_id, Booking.status == "pending_payment"))
+    ).scalars().all()
+    assert len(active) == 1
+
+
+async def test_payment_from_an_earlier_attempt_still_confirms_and_a_second_is_refunded(db):
+    from app.models.payment import Payment
+    from app.services import paystack_service
+
+    await paystack_service.set_rate(db, Decimal("1500"))
+    student, booking = await _pending_booking(db)
+    with patch.object(paystack_service, "_api", AsyncMock(return_value={"authorization_url": "https://pay"})):
+        await paystack_service.start_booking_payment(db, booking, student)
+        first_ref = booking.payment_reference
+        await paystack_service.start_booking_payment(db, booking, student)  # student came back
+        second_ref = booking.payment_reference
+    assert first_ref != second_ref
+
+    meta = {"kind": "booking", "booking_id": str(booking.id)}
+    with _quiet():
+        result = await paystack_service.process_successful_charge(
+            db, {"status": "success", "reference": first_ref, "metadata": meta}
+        )
+    assert result == "booking_confirmed"
+    await db.refresh(booking)
+    assert booking.status == "confirmed" and booking.payment_reference == first_ref
+
+    with patch.object(paystack_service, "refund", AsyncMock()) as refund:
+        result = await paystack_service.process_successful_charge(
+            db, {"status": "success", "reference": second_ref, "metadata": meta}
+        )
+    assert result == "already_processed"
+    refund.assert_awaited_once_with(second_ref)
+    statuses = sorted(
+        (await db.execute(select(Payment.status).where(Payment.booking_id == booking.id))).scalars().all()
+    )
+    assert statuses == ["duplicate", "succeeded"]

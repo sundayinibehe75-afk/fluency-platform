@@ -125,6 +125,19 @@ async def create_booking(
     )
     existing_booking = existing_result.scalar_one_or_none()
 
+    if (
+        existing_booking is not None
+        and existing_booking.status == "pending_payment"
+        and booking_type == "single"
+    ):
+        # The student left the payment page without paying and is trying
+        # again: give them the same booking (with a fresh hold) so they can
+        # go back to payment, instead of a dead end.
+        now = datetime.now(tz=timezone.utc)
+        existing_booking.reserved_until = now + timedelta(minutes=RESERVATION_MINUTES)
+        await db.flush()
+        return _booking_to_response(existing_booking, slot)
+
     if existing_booking is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

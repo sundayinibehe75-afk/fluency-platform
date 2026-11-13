@@ -306,13 +306,13 @@ async def process_successful_charge(db: AsyncSession, data: dict) -> str:
 
     kind = metadata.get("kind")
     if kind == "booking":
-        return await _confirm_booking(db, reference)
+        return await _confirm_booking(db, reference, metadata.get("booking_id"))
     if kind == "package":
         return await _grant_package(db, reference, metadata)
     return "ignored"
 
 
-async def _confirm_booking(db: AsyncSession, reference: str) -> str:
+async def _confirm_booking(db: AsyncSession, reference: str, booking_id: str | None = None) -> str:
     event_id = f"paystack:{reference}"
     if (await db.execute(select(Payment.id).where(Payment.stripe_event_id == event_id))).first():
         return "already_processed"
@@ -320,6 +320,37 @@ async def _confirm_booking(db: AsyncSession, reference: str) -> str:
     booking = (
         await db.execute(select(Booking).where(Booking.payment_reference == reference).with_for_update())
     ).scalar_one_or_none()
+    if booking is None and booking_id:
+        # A student can leave the payment page and start a new payment for the
+        # same booking, which replaces the stored reference. If the earlier
+        # attempt is the one that was paid, find the booking from the metadata.
+        try:
+            booking = (
+                await db.execute(select(Booking).where(Booking.id == uuid.UUID(booking_id)).with_for_update())
+            ).scalar_one_or_none()
+        except ValueError:
+            booking = None
+        if booking is not None:
+            if booking.status == "confirmed":
+                # Already paid through the other attempt: refund this one.
+                db.add(
+                    Payment(
+                        booking_id=booking.id,
+                        stripe_event_id=event_id,
+                        event_type="paystack.charge.duplicate",
+                        amount_cents=booking.price_cents,
+                        currency=booking.currency,
+                        status="duplicate",  # refunded, not counted as income
+                    )
+                )
+                await db.flush()
+                logger.warning("Duplicate Paystack payment for a booking — refunding", extra={"reference": reference})
+                try:
+                    await refund(reference)
+                except Exception:
+                    logger.exception("Automatic refund failed — needs manual follow-up", extra={"reference": reference})
+                return "already_processed"
+            booking.payment_reference = reference
     if booking is None:
         logger.error("Paystack payment for unknown booking", extra={"reference": reference})
         return "ignored"

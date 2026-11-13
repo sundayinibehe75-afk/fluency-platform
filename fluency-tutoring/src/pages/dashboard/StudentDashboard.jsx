@@ -215,6 +215,7 @@ export default function StudentDashboard() {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState(null)
+  const [payingId, setPayingId] = useState(null)
   const [account, setAccount] = useState(null)
   const [planBusy, setPlanBusy] = useState(false)
   const [params] = useSearchParams()
@@ -347,6 +348,24 @@ export default function StudentDashboard() {
 
   const past = bookings.filter((b) => !upcoming.includes(b) && (b.status === 'completed' || endOf(b) < now))
 
+  // Single lessons the student started booking but has not paid for yet
+  const awaitingPayment = bookings
+    .filter((b) => b.status === 'pending_payment' && new Date(b.start_at) > now)
+    .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
+
+  async function completePayment(booking) {
+    setPayingId(booking.id)
+    try {
+      // Re-booking the same slot renews the hold on it, then a new payment starts
+      const res = await api.post('/bookings', { slot_id: booking.slot_id, booking_type: 'single' })
+      const checkout = await api.post('/payments/checkout', { booking_id: res.data.id })
+      window.location.href = checkout.data.session_url
+    } catch (err) {
+      alert(getErrorMessage(err, 'Could not start the payment. Please book the lesson again.'))
+      setPayingId(null)
+    }
+  }
+
   function isWithin10Min(booking) {
     // Joinable from 10 minutes before the start until the lesson ends
     const startAt = new Date(booking.start_at || booking.slot_start_at)
@@ -380,6 +399,41 @@ export default function StudentDashboard() {
             </div>
           ) : (
             <>
+              {awaitingPayment.length > 0 && (
+                <section className="dashboard-section">
+                  <h2 className="dashboard-section-title">Waiting for payment</h2>
+                  <p className="dashboard-empty">
+                    These lessons are held for you for 15 minutes while you pay.
+                  </p>
+                  <div className="dashboard-cards">
+                    {awaitingPayment.map((booking) => (
+                      <div key={booking.id} className="dashboard-card">
+                        <div className="dashboard-card-header">
+                          <span className="dashboard-card-date">{formatDate(booking.start_at)}</span>
+                          <span className="dashboard-status dashboard-status--pending_payment">not paid</span>
+                        </div>
+                        <div className="dashboard-card-actions">
+                          <button
+                            onClick={() => completePayment(booking)}
+                            disabled={payingId === booking.id}
+                            className="btn btn-primary btn-sm"
+                          >
+                            {payingId === booking.id ? 'Opening payment...' : 'Complete payment'}
+                          </button>
+                          <button
+                            onClick={() => handleCancel(booking)}
+                            disabled={cancellingId === booking.id}
+                            className="btn btn-cancel btn-sm"
+                          >
+                            {cancellingId === booking.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <section className="dashboard-section">
                 <h2 className="dashboard-section-title">Upcoming Lessons</h2>
                 {upcoming.length === 0 ? (
